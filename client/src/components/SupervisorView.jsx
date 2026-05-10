@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
-import { calculateMIS, SCORE_RAILS } from '../utils/misCalculator'
+import { calculateMIS } from '../utils/misCalculator'
+import {
+  getTeam, saveTeam, closeMonth,
+  getArchivedMonths, getArchivedMonth, upsertArchivedMonth,
+  saveConfig,
+} from '../utils/storage'
 
 const EMPTY_GUIDE = { name: '', cpdMode: 'perday', cpd: '', gcrMode: 'perday', gcr: '', qa: '', days: '' }
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
@@ -34,7 +39,7 @@ function Sparkline({ values, color, width = 130, height = 40 }) {
   )
 }
 
-export default function SupervisorView({ config, token, onConfigSave }) {
+export default function SupervisorView({ config, onConfigSave }) {
   const [tab, setTab] = useState('input')
 
   // Input tab
@@ -88,11 +93,9 @@ export default function SupervisorView({ config, token, onConfigSave }) {
   const fmtSigned = (v) => { const n = parseFloat(Number(v).toFixed(2)); return (n > 0 ? '+' : '') + n }
 
   // Load archive list
-  const fetchArchivedMonths = () =>
-    fetch('/api/team/archive', { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(setArchivedMonths)
-      .catch(() => setArchivedMonths([]))
+  const fetchArchivedMonths = () => {
+    setArchivedMonths(getArchivedMonths())
+  }
 
   useEffect(() => { fetchArchivedMonths() }, [])
 
@@ -102,20 +105,16 @@ export default function SupervisorView({ config, token, onConfigSave }) {
   // Load trend data when trend tab opens
   useEffect(() => {
     if ((tab !== 'trend' && tab !== 'team-trend') || allArchiveData !== null || !archivedMonths?.length) return
-    Promise.all(
-      archivedMonths.map(m =>
-        fetch(`/api/team/archive/${m}`, { headers: { Authorization: `Bearer ${token}` } })
-          .then(r => r.json()).catch(() => null)
-      )
-    ).then(results => {
-      const map = {}
-      results.forEach((data, i) => { if (data) map[archivedMonths[i]] = data })
-      setAllArchiveData(map)
+    const map = {}
+    archivedMonths.forEach(m => {
+      const data = getArchivedMonth(m)
+      if (data) map[m] = data
     })
+    setAllArchiveData(map)
   }, [tab, archivedMonths])
 
   // Load data for the selected input month
-  const loadInputMonth = async (month) => {
+  const loadInputMonth = (month) => {
     setInputLoading(true)
     inputLoaded.current = false
     setInputResults(null)
@@ -127,39 +126,30 @@ export default function SupervisorView({ config, token, onConfigSave }) {
     setShowRosterPicker(false)
 
     if (month === config.month) {
-      // Current month: load from /api/team
-      try {
-        const r = await fetch('/api/team', { headers: { Authorization: `Bearer ${token}` } })
-        const data = await r.json()
-        if (data.guides?.length > 0 && data.guides.some(g => g.name)) {
-          setInputGuides(data.guides)
-        } else {
-          setInputGuides([{ ...EMPTY_GUIDE }])
-          setShowRosterPicker(true)
-        }
-        setInputConfig({ ...config })
-        setInputConfigDraft({ ...config })
-      } catch { setInputGuides([{ ...EMPTY_GUIDE }]) }
+      const data = getTeam()
+      if (data.guides?.length > 0 && data.guides.some(g => g.name)) {
+        setInputGuides(data.guides)
+      } else {
+        setInputGuides([{ ...EMPTY_GUIDE }])
+        setShowRosterPicker(true)
+      }
+      setInputConfig({ ...config })
+      setInputConfigDraft({ ...config })
     } else if (archivedMonths?.includes(month)) {
-      // Past month: load from archive
-      try {
-        const r = await fetch(`/api/team/archive/${month}`, { headers: { Authorization: `Bearer ${token}` } })
-        const data = await r.json()
+      const data = getArchivedMonth(month)
+      if (data) {
         setInputGuides(data.guides?.length ? data.guides : [{ ...EMPTY_GUIDE }])
         setInputConfig(data.config ? { ...data.config } : { ...config })
         setInputConfigDraft(data.config ? { ...data.config } : { ...config })
         setInputResults(data.results?.length ? data.results : null)
-      } catch { setInputGuides([{ ...EMPTY_GUIDE }]) }
-    } else {
-      // Future month: pre-fill names from current month, empty actuals
-      try {
-        const r = await fetch('/api/team', { headers: { Authorization: `Bearer ${token}` } })
-        const data = await r.json()
-        const guides = data.guides?.filter(g => g.name).map(g => ({ ...EMPTY_GUIDE, name: g.name }))
-        setInputGuides(guides?.length ? guides : [{ ...EMPTY_GUIDE }])
-      } catch {
+      } else {
         setInputGuides([{ ...EMPTY_GUIDE }])
       }
+    } else {
+      // Future month: pre-fill names from current month, empty actuals
+      const data = getTeam()
+      const guides = data.guides?.filter(g => g.name).map(g => ({ ...EMPTY_GUIDE, name: g.name }))
+      setInputGuides(guides?.length ? guides : [{ ...EMPTY_GUIDE }])
       setInputConfig({ ...config, month })
       setInputConfigDraft({ ...config, month })
     }
@@ -175,13 +165,12 @@ export default function SupervisorView({ config, token, onConfigSave }) {
     if (!inputLoaded.current || !isCurrentMonth) return
     setInputSaveStatus('saving')
     const timer = setTimeout(() => {
-      fetch('/api/team', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ month: config.month, guides: inputGuides }),
-      })
-        .then(r => r.ok ? setInputSaveStatus('saved') : setInputSaveStatus('error'))
-        .catch(() => setInputSaveStatus('error'))
+      try {
+        saveTeam(config.month, inputGuides)
+        setInputSaveStatus('saved')
+      } catch {
+        setInputSaveStatus('error')
+      }
     }, 1000)
     return () => clearTimeout(timer)
   }, [inputGuides])
@@ -203,17 +192,11 @@ export default function SupervisorView({ config, token, onConfigSave }) {
     setInputResults(calcResults(inputGuides, inputConfig))
   }
 
-  const handleSaveMonth = async () => {
+  const handleSaveMonth = () => {
     setSaveMonthMsg('')
     const results = calcResults(inputGuides, inputConfig)
     try {
-      const res = await fetch(`/api/team/archive/${inputMonth}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ guides: inputGuides, results, config: inputConfig }),
-      })
-      if (!res.ok) { setSaveMonthMsg('Error saving.'); return }
-      const updated = await res.json()
+      const updated = upsertArchivedMonth(inputMonth, { guides: inputGuides, results, config: inputConfig })
       setInputResults(updated.results || null)
       setSaveMonthMsg('Saved.')
       setEditingGuides(false)
@@ -222,17 +205,11 @@ export default function SupervisorView({ config, token, onConfigSave }) {
     } catch { setSaveMonthMsg('Error saving.') }
   }
 
-  const handleCloseMonth = async () => {
+  const handleCloseMonth = () => {
     setCloseMonthMsg('')
     const results = calcResults(inputGuides, inputConfig)
     try {
-      const res = await fetch('/api/team/close', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ results, config: inputConfig }),
-      })
-      if (!res.ok) { const err = await res.json(); setCloseMonthMsg(`Error: ${err.error}`); return }
-      const { current } = await res.json()
+      const { current } = closeMonth(results, inputConfig)
       inputLoaded.current = false
       setInputGuides(current.guides)
       setInputResults(null)
@@ -240,21 +217,15 @@ export default function SupervisorView({ config, token, onConfigSave }) {
       inputLoaded.current = true
       setCloseMonthMsg(`${config.month} archived.`)
       fetchArchivedMonths()
-    } catch { setCloseMonthMsg('Error closing month.') }
+    } catch (e) { setCloseMonthMsg(`Error: ${e.message}`) }
   }
 
-  const handleSaveInputConfig = async (e) => {
+  const handleSaveInputConfig = (e) => {
     e.preventDefault()
     setInputConfigMsg('')
     if (isCurrentMonth) {
       try {
-        const res = await fetch('/api/config', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify(inputConfigDraft),
-        })
-        if (!res.ok) { setInputConfigMsg('Error saving config.'); return }
-        const saved = await res.json()
+        const saved = saveConfig(inputConfigDraft)
         onConfigSave(saved)
         setInputConfig({ ...saved })
         setInputConfigDraft({ ...saved })
@@ -262,16 +233,9 @@ export default function SupervisorView({ config, token, onConfigSave }) {
         setInputConfigMsg('Config saved.')
       } catch { setInputConfigMsg('Error saving config.') }
     } else {
-      // Non-current: recalculate with new config, upsert archive
       const results = calcResults(inputGuides, inputConfigDraft)
       try {
-        const res = await fetch(`/api/team/archive/${inputMonth}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ guides: inputGuides, results, config: inputConfigDraft }),
-        })
-        if (!res.ok) { setInputConfigMsg('Error saving config.'); return }
-        const updated = await res.json()
+        const updated = upsertArchivedMonth(inputMonth, { guides: inputGuides, results, config: inputConfigDraft })
         setInputConfig({ ...updated.config })
         setInputConfigDraft({ ...updated.config })
         setInputResults(updated.results || null)
@@ -282,11 +246,10 @@ export default function SupervisorView({ config, token, onConfigSave }) {
     }
   }
 
-  const handleLoadRoster = async (month) => {
+  const handleLoadRoster = (month) => {
     if (!month) return
-    const res = await fetch(`/api/team/archive/${month}`, { headers: { Authorization: `Bearer ${token}` } })
-    const data = await res.json()
-    if (!data.guides?.length) return
+    const data = getArchivedMonth(month)
+    if (!data?.guides?.length) return
     inputLoaded.current = false
     setInputGuides(data.guides.map(g => ({ ...EMPTY_GUIDE, name: g.name })))
     setInputResults(null)

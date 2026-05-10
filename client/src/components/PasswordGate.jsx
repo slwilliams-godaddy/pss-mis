@@ -1,31 +1,17 @@
 import { useState } from 'react'
+import { checkPassword } from '../utils/storage'
 
 export default function PasswordGate({ onSuccess }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault()
     setError('')
-    setLoading(true)
-    try {
-      const res = await fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
-      })
-      if (!res.ok) {
-        setError('Incorrect password.')
-        return
-      }
-      const { token } = await res.json()
-      sessionStorage.setItem('supervisor-token', token)
-      onSuccess(token)
-    } catch {
-      setError('Could not reach server.')
-    } finally {
-      setLoading(false)
+    if (checkPassword(password)) {
+      onSuccess()
+    } else {
+      setError('Incorrect password.')
     }
   }
 
@@ -44,9 +30,7 @@ export default function PasswordGate({ onSuccess }) {
             required
           />
           {error && <p className="gate-error">{error}</p>}
-          <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? 'Checking…' : 'Continue'}
-          </button>
+          <button type="submit" className="btn-primary">Continue</button>
         </form>
       </div>
     </div>

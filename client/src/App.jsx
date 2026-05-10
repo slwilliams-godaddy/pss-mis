@@ -1,30 +1,25 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import GuideView from './components/GuideView'
 import SupervisorView from './components/SupervisorView'
 import PasswordGate from './components/PasswordGate'
+import { getConfig, saveConfig } from './utils/storage'
 import './App.css'
 
 export default function App() {
   const [role, setRole] = useState(null)
   const [showAbout, setShowAbout] = useState(false)
-  const [supervisorToken, setSupervisorToken] = useState(null)
-  const [config, setConfig] = useState(null)
-  const [error, setError] = useState(null)
-
-  useEffect(() => {
-    fetch('/api/config')
-      .then(r => r.json())
-      .then(setConfig)
-      .catch(() => setError('Could not load config. Is the server running?'))
-  }, [])
+  const [supervisorAuthed, setSupervisorAuthed] = useState(false)
+  const [config, setConfig] = useState(() => getConfig())
 
   const handleSwitchRole = () => {
     setRole(null)
-    setSupervisorToken(null)
+    setSupervisorAuthed(false)
   }
 
-  if (error) return <div className="error-screen">{error}</div>
-  if (!config) return <div className="loading-screen">Loading...</div>
+  const handleConfigSave = (cfg) => {
+    saveConfig(cfg)
+    setConfig(cfg)
+  }
 
   if (!role) {
     return (
@@ -315,10 +310,10 @@ export default function App() {
     )
   }
 
-  if (role === 'supervisor' && !supervisorToken) {
+  if (role === 'supervisor' && !supervisorAuthed) {
     return (
       <PasswordGate
-        onSuccess={(token) => setSupervisorToken(token)}
+        onSuccess={() => setSupervisorAuthed(true)}
       />
     )
   }
@@ -332,7 +327,7 @@ export default function App() {
       <main>
         {role === 'guide'
           ? <GuideView config={config} />
-          : <SupervisorView config={config} token={supervisorToken} onConfigSave={setConfig} />
+          : <SupervisorView config={config} onConfigSave={handleConfigSave} />
         }
       </main>
     </div>
