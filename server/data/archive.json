@@ -1,0 +1,1206 @@
+{
+  "2026-01": {
+    "month": "2026-01",
+    "closedAt": "2026-01-28T17:00:00.000Z",
+    "config": {
+      "month": "2026-01",
+      "cpd": {
+        "min": 13,
+        "target": 15,
+        "max": 18
+      },
+      "gcr": {
+        "min": 35,
+        "target": 60,
+        "max": 90
+      },
+      "qa": {
+        "min": 68,
+        "target": 83,
+        "max": 100
+      }
+    },
+    "guides": [
+      {
+        "name": "Alex Chen",
+        "cpdMode": "perday",
+        "cpd": "18.2",
+        "gcrMode": "perday",
+        "gcr": "88",
+        "qa": "94",
+        "days": "21"
+      },
+      {
+        "name": "Jordan Smith",
+        "cpdMode": "perday",
+        "cpd": "16.8",
+        "gcrMode": "perday",
+        "gcr": "75",
+        "qa": "88",
+        "days": "21"
+      },
+      {
+        "name": "Maya Rodriguez",
+        "cpdMode": "perday",
+        "cpd": "15.5",
+        "gcrMode": "perday",
+        "gcr": "65",
+        "qa": "85",
+        "days": "21"
+      },
+      {
+        "name": "Tyler Johnson",
+        "cpdMode": "perday",
+        "cpd": "14.2",
+        "gcrMode": "perday",
+        "gcr": "58",
+        "qa": "82",
+        "days": "21"
+      },
+      {
+        "name": "Sam Williams",
+        "cpdMode": "perday",
+        "cpd": "17.9",
+        "gcrMode": "perday",
+        "gcr": "85",
+        "qa": "92",
+        "days": "21"
+      },
+      {
+        "name": "Casey Brown",
+        "cpdMode": "perday",
+        "cpd": "12.5",
+        "gcrMode": "perday",
+        "gcr": "45",
+        "qa": "75",
+        "days": "21"
+      },
+      {
+        "name": "Morgan Davis",
+        "cpdMode": "perday",
+        "cpd": "16.2",
+        "gcrMode": "perday",
+        "gcr": "70",
+        "qa": "86",
+        "days": "21"
+      },
+      {
+        "name": "Riley Wilson",
+        "cpdMode": "perday",
+        "cpd": "11",
+        "gcrMode": "perday",
+        "gcr": "38",
+        "qa": "70",
+        "days": "21"
+      },
+      {
+        "name": "Drew Martinez",
+        "cpdMode": "perday",
+        "cpd": "15",
+        "gcrMode": "perday",
+        "gcr": "63",
+        "qa": "84",
+        "days": "21"
+      },
+      {
+        "name": "Avery Thompson",
+        "cpdMode": "perday",
+        "cpd": "18.8",
+        "gcrMode": "perday",
+        "gcr": "92",
+        "qa": "95",
+        "days": "21"
+      },
+      {
+        "name": "Quinn Anderson",
+        "cpdMode": "perday",
+        "cpd": "13.8",
+        "gcrMode": "perday",
+        "gcr": "52",
+        "qa": "79",
+        "days": "21"
+      },
+      {
+        "name": "Blake Nelson",
+        "cpdMode": "perday",
+        "cpd": "16.5",
+        "gcrMode": "perday",
+        "gcr": "73",
+        "qa": "88",
+        "days": "21"
+      }
+    ],
+    "results": [
+      {
+        "name": "Alex Chen",
+        "actuals": {
+          "cpd": 18.2,
+          "gcr": 88,
+          "qa": 94
+        },
+        "cpd": 35,
+        "gcr": 18.67,
+        "qa": 12.94,
+        "total": 66.61,
+        "passing": true
+      },
+      {
+        "name": "Jordan Smith",
+        "actuals": {
+          "cpd": 16.8,
+          "gcr": 75,
+          "qa": 88
+        },
+        "cpd": 21,
+        "gcr": 10,
+        "qa": 5.88,
+        "total": 36.88,
+        "passing": true
+      },
+      {
+        "name": "Maya Rodriguez",
+        "actuals": {
+          "cpd": 15.5,
+          "gcr": 65,
+          "qa": 85
+        },
+        "cpd": 5.83,
+        "gcr": 3.33,
+        "qa": 2.35,
+        "total": 11.52,
+        "passing": true
+      },
+      {
+        "name": "Tyler Johnson",
+        "actuals": {
+          "cpd": 14.2,
+          "gcr": 58,
+          "qa": 82
+        },
+        "cpd": -14,
+        "gcr": -1.6,
+        "qa": -1.33,
+        "total": -16.93,
+        "passing": false
+      },
+      {
+        "name": "Sam Williams",
+        "actuals": {
+          "cpd": 17.9,
+          "gcr": 85,
+          "qa": 92
+        },
+        "cpd": 33.83,
+        "gcr": 16.67,
+        "qa": 10.59,
+        "total": 61.09,
+        "passing": true
+      },
+      {
+        "name": "Casey Brown",
+        "actuals": {
+          "cpd": 12.5,
+          "gcr": 45,
+          "qa": 75
+        },
+        "cpd": -35,
+        "gcr": -12,
+        "qa": -10.67,
+        "total": -57.67,
+        "passing": false
+      },
+      {
+        "name": "Morgan Davis",
+        "actuals": {
+          "cpd": 16.2,
+          "gcr": 70,
+          "qa": 86
+        },
+        "cpd": 14,
+        "gcr": 6.67,
+        "qa": 3.53,
+        "total": 24.2,
+        "passing": true
+      },
+      {
+        "name": "Riley Wilson",
+        "actuals": {
+          "cpd": 11,
+          "gcr": 38,
+          "qa": 70
+        },
+        "cpd": -35,
+        "gcr": -17.6,
+        "qa": -17.33,
+        "total": -69.93,
+        "passing": false
+      },
+      {
+        "name": "Drew Martinez",
+        "actuals": {
+          "cpd": 15,
+          "gcr": 63,
+          "qa": 84
+        },
+        "cpd": 0,
+        "gcr": 2,
+        "qa": 1.18,
+        "total": 3.18,
+        "passing": true
+      },
+      {
+        "name": "Avery Thompson",
+        "actuals": {
+          "cpd": 18.8,
+          "gcr": 92,
+          "qa": 95
+        },
+        "cpd": 35,
+        "gcr": 20,
+        "qa": 14.12,
+        "total": 69.12,
+        "passing": true
+      },
+      {
+        "name": "Quinn Anderson",
+        "actuals": {
+          "cpd": 13.8,
+          "gcr": 52,
+          "qa": 79
+        },
+        "cpd": -21,
+        "gcr": -6.4,
+        "qa": -5.33,
+        "total": -32.73,
+        "passing": false
+      },
+      {
+        "name": "Blake Nelson",
+        "actuals": {
+          "cpd": 16.5,
+          "gcr": 73,
+          "qa": 88
+        },
+        "cpd": 17.5,
+        "gcr": 8.67,
+        "qa": 5.88,
+        "total": 32.05,
+        "passing": true
+      }
+    ],
+    "averages": {
+      "cpd": 15.53,
+      "gcr": 67,
+      "qa": 84.83,
+      "cpdPts": 4.76,
+      "gcrPts": 4.03,
+      "qaPts": 1.82,
+      "total": 10.62,
+      "passRate": 0.67,
+      "count": 12
+    }
+  },
+  "2026-02": {
+    "month": "2026-02",
+    "closedAt": "2026-02-28T17:00:00.000Z",
+    "config": {
+      "month": "2026-02",
+      "cpd": {
+        "min": 13,
+        "target": 16,
+        "max": 19
+      },
+      "gcr": {
+        "min": 38,
+        "target": 65,
+        "max": 95
+      },
+      "qa": {
+        "min": 70,
+        "target": 84,
+        "max": 100
+      }
+    },
+    "guides": [
+      {
+        "name": "Alex Chen",
+        "cpdMode": "perday",
+        "cpd": "19.1",
+        "gcrMode": "perday",
+        "gcr": "90",
+        "qa": "95",
+        "days": "21"
+      },
+      {
+        "name": "Jordan Smith",
+        "cpdMode": "perday",
+        "cpd": "17.2",
+        "gcrMode": "perday",
+        "gcr": "78",
+        "qa": "89",
+        "days": "21"
+      },
+      {
+        "name": "Maya Rodriguez",
+        "cpdMode": "perday",
+        "cpd": "16",
+        "gcrMode": "perday",
+        "gcr": "68",
+        "qa": "86",
+        "days": "21"
+      },
+      {
+        "name": "Tyler Johnson",
+        "cpdMode": "perday",
+        "cpd": "13.8",
+        "gcrMode": "perday",
+        "gcr": "55",
+        "qa": "80",
+        "days": "21"
+      },
+      {
+        "name": "Sam Williams",
+        "cpdMode": "perday",
+        "cpd": "17.5",
+        "gcrMode": "perday",
+        "gcr": "83",
+        "qa": "91",
+        "days": "21"
+      },
+      {
+        "name": "Casey Brown",
+        "cpdMode": "perday",
+        "cpd": "13",
+        "gcrMode": "perday",
+        "gcr": "48",
+        "qa": "76",
+        "days": "21"
+      },
+      {
+        "name": "Morgan Davis",
+        "cpdMode": "perday",
+        "cpd": "15.8",
+        "gcrMode": "perday",
+        "gcr": "68",
+        "qa": "85",
+        "days": "21"
+      },
+      {
+        "name": "Riley Wilson",
+        "cpdMode": "perday",
+        "cpd": "11.5",
+        "gcrMode": "perday",
+        "gcr": "42",
+        "qa": "72",
+        "days": "21"
+      },
+      {
+        "name": "Drew Martinez",
+        "cpdMode": "perday",
+        "cpd": "15.5",
+        "gcrMode": "perday",
+        "gcr": "66",
+        "qa": "85",
+        "days": "21"
+      },
+      {
+        "name": "Avery Thompson",
+        "cpdMode": "perday",
+        "cpd": "19.2",
+        "gcrMode": "perday",
+        "gcr": "94",
+        "qa": "96",
+        "days": "21"
+      },
+      {
+        "name": "Quinn Anderson",
+        "cpdMode": "perday",
+        "cpd": "14.2",
+        "gcrMode": "perday",
+        "gcr": "55",
+        "qa": "80",
+        "days": "21"
+      },
+      {
+        "name": "Blake Nelson",
+        "cpdMode": "perday",
+        "cpd": "16.2",
+        "gcrMode": "perday",
+        "gcr": "71",
+        "qa": "87",
+        "days": "21"
+      }
+    ],
+    "results": [
+      {
+        "name": "Alex Chen",
+        "actuals": {
+          "cpd": 19.1,
+          "gcr": 90,
+          "qa": 95
+        },
+        "cpd": 35,
+        "gcr": 16.67,
+        "qa": 13.75,
+        "total": 65.42,
+        "passing": true
+      },
+      {
+        "name": "Jordan Smith",
+        "actuals": {
+          "cpd": 17.2,
+          "gcr": 78,
+          "qa": 89
+        },
+        "cpd": 14,
+        "gcr": 8.67,
+        "qa": 6.25,
+        "total": 28.92,
+        "passing": true
+      },
+      {
+        "name": "Maya Rodriguez",
+        "actuals": {
+          "cpd": 16,
+          "gcr": 68,
+          "qa": 86
+        },
+        "cpd": 0,
+        "gcr": 2,
+        "qa": 2.5,
+        "total": 4.5,
+        "passing": true
+      },
+      {
+        "name": "Tyler Johnson",
+        "actuals": {
+          "cpd": 13.8,
+          "gcr": 55,
+          "qa": 80
+        },
+        "cpd": -25.67,
+        "gcr": -7.41,
+        "qa": -5.71,
+        "total": -38.79,
+        "passing": false
+      },
+      {
+        "name": "Sam Williams",
+        "actuals": {
+          "cpd": 17.5,
+          "gcr": 83,
+          "qa": 91
+        },
+        "cpd": 17.5,
+        "gcr": 12,
+        "qa": 8.75,
+        "total": 38.25,
+        "passing": true
+      },
+      {
+        "name": "Casey Brown",
+        "actuals": {
+          "cpd": 13,
+          "gcr": 48,
+          "qa": 76
+        },
+        "cpd": -35,
+        "gcr": -12.59,
+        "qa": -11.43,
+        "total": -59.02,
+        "passing": false
+      },
+      {
+        "name": "Morgan Davis",
+        "actuals": {
+          "cpd": 15.8,
+          "gcr": 68,
+          "qa": 85
+        },
+        "cpd": -2.33,
+        "gcr": 2,
+        "qa": 1.25,
+        "total": 0.92,
+        "passing": true
+      },
+      {
+        "name": "Riley Wilson",
+        "actuals": {
+          "cpd": 11.5,
+          "gcr": 42,
+          "qa": 72
+        },
+        "cpd": -35,
+        "gcr": -17.04,
+        "qa": -17.14,
+        "total": -69.18,
+        "passing": false
+      },
+      {
+        "name": "Drew Martinez",
+        "actuals": {
+          "cpd": 15.5,
+          "gcr": 66,
+          "qa": 85
+        },
+        "cpd": -5.83,
+        "gcr": 0.67,
+        "qa": 1.25,
+        "total": -3.92,
+        "passing": false
+      },
+      {
+        "name": "Avery Thompson",
+        "actuals": {
+          "cpd": 19.2,
+          "gcr": 94,
+          "qa": 96
+        },
+        "cpd": 35,
+        "gcr": 19.33,
+        "qa": 15,
+        "total": 69.33,
+        "passing": true
+      },
+      {
+        "name": "Quinn Anderson",
+        "actuals": {
+          "cpd": 14.2,
+          "gcr": 55,
+          "qa": 80
+        },
+        "cpd": -21,
+        "gcr": -7.41,
+        "qa": -5.71,
+        "total": -34.12,
+        "passing": false
+      },
+      {
+        "name": "Blake Nelson",
+        "actuals": {
+          "cpd": 16.2,
+          "gcr": 71,
+          "qa": 87
+        },
+        "cpd": 2.33,
+        "gcr": 4,
+        "qa": 3.75,
+        "total": 10.08,
+        "passing": true
+      }
+    ],
+    "averages": {
+      "cpd": 15.75,
+      "gcr": 68.17,
+      "qa": 85.17,
+      "cpdPts": -1.75,
+      "gcrPts": 1.74,
+      "qaPts": 1.04,
+      "total": 1.03,
+      "passRate": 0.58,
+      "count": 12
+    }
+  },
+  "2026-03": {
+    "month": "2026-03",
+    "closedAt": "2026-03-28T17:00:00.000Z",
+    "config": {
+      "month": "2026-03",
+      "cpd": {
+        "min": 14,
+        "target": 16,
+        "max": 19
+      },
+      "gcr": {
+        "min": 40,
+        "target": 67,
+        "max": 100
+      },
+      "qa": {
+        "min": 70,
+        "target": 84,
+        "max": 100
+      }
+    },
+    "guides": [
+      {
+        "name": "Alex Chen",
+        "cpdMode": "perday",
+        "cpd": "18.8",
+        "gcrMode": "perday",
+        "gcr": "92",
+        "qa": "93",
+        "days": "21"
+      },
+      {
+        "name": "Jordan Smith",
+        "cpdMode": "perday",
+        "cpd": "17.5",
+        "gcrMode": "perday",
+        "gcr": "80",
+        "qa": "90",
+        "days": "21"
+      },
+      {
+        "name": "Maya Rodriguez",
+        "cpdMode": "perday",
+        "cpd": "16.8",
+        "gcrMode": "perday",
+        "gcr": "72",
+        "qa": "87",
+        "days": "21"
+      },
+      {
+        "name": "Tyler Johnson",
+        "cpdMode": "perday",
+        "cpd": "15",
+        "gcrMode": "perday",
+        "gcr": "62",
+        "qa": "83",
+        "days": "21"
+      },
+      {
+        "name": "Sam Williams",
+        "cpdMode": "perday",
+        "cpd": "18.2",
+        "gcrMode": "perday",
+        "gcr": "87",
+        "qa": "93",
+        "days": "21"
+      },
+      {
+        "name": "Casey Brown",
+        "cpdMode": "perday",
+        "cpd": "12.8",
+        "gcrMode": "perday",
+        "gcr": "50",
+        "qa": "78",
+        "days": "21"
+      },
+      {
+        "name": "Morgan Davis",
+        "cpdMode": "perday",
+        "cpd": "16.5",
+        "gcrMode": "perday",
+        "gcr": "72",
+        "qa": "87",
+        "days": "21"
+      },
+      {
+        "name": "Riley Wilson",
+        "cpdMode": "perday",
+        "cpd": "12.2",
+        "gcrMode": "perday",
+        "gcr": "44",
+        "qa": "73",
+        "days": "21"
+      },
+      {
+        "name": "Drew Martinez",
+        "cpdMode": "perday",
+        "cpd": "16",
+        "gcrMode": "perday",
+        "gcr": "69",
+        "qa": "86",
+        "days": "21"
+      },
+      {
+        "name": "Avery Thompson",
+        "cpdMode": "perday",
+        "cpd": "19.5",
+        "gcrMode": "perday",
+        "gcr": "96",
+        "qa": "97",
+        "days": "21"
+      },
+      {
+        "name": "Quinn Anderson",
+        "cpdMode": "perday",
+        "cpd": "14",
+        "gcrMode": "perday",
+        "gcr": "53",
+        "qa": "79",
+        "days": "21"
+      },
+      {
+        "name": "Blake Nelson",
+        "cpdMode": "perday",
+        "cpd": "17",
+        "gcrMode": "perday",
+        "gcr": "76",
+        "qa": "89",
+        "days": "21"
+      }
+    ],
+    "results": [
+      {
+        "name": "Alex Chen",
+        "actuals": {
+          "cpd": 18.8,
+          "gcr": 92,
+          "qa": 93
+        },
+        "cpd": 32.67,
+        "gcr": 15.15,
+        "qa": 11.25,
+        "total": 59.07,
+        "passing": true
+      },
+      {
+        "name": "Jordan Smith",
+        "actuals": {
+          "cpd": 17.5,
+          "gcr": 80,
+          "qa": 90
+        },
+        "cpd": 17.5,
+        "gcr": 7.88,
+        "qa": 7.5,
+        "total": 32.88,
+        "passing": true
+      },
+      {
+        "name": "Maya Rodriguez",
+        "actuals": {
+          "cpd": 16.8,
+          "gcr": 72,
+          "qa": 87
+        },
+        "cpd": 9.33,
+        "gcr": 3.03,
+        "qa": 3.75,
+        "total": 16.11,
+        "passing": true
+      },
+      {
+        "name": "Tyler Johnson",
+        "actuals": {
+          "cpd": 15,
+          "gcr": 62,
+          "qa": 83
+        },
+        "cpd": -17.5,
+        "gcr": -3.7,
+        "qa": -1.43,
+        "total": -22.63,
+        "passing": false
+      },
+      {
+        "name": "Sam Williams",
+        "actuals": {
+          "cpd": 18.2,
+          "gcr": 87,
+          "qa": 93
+        },
+        "cpd": 25.67,
+        "gcr": 12.12,
+        "qa": 11.25,
+        "total": 49.04,
+        "passing": true
+      },
+      {
+        "name": "Casey Brown",
+        "actuals": {
+          "cpd": 12.8,
+          "gcr": 50,
+          "qa": 78
+        },
+        "cpd": -35,
+        "gcr": -12.59,
+        "qa": -8.57,
+        "total": -56.16,
+        "passing": false
+      },
+      {
+        "name": "Morgan Davis",
+        "actuals": {
+          "cpd": 16.5,
+          "gcr": 72,
+          "qa": 87
+        },
+        "cpd": 5.83,
+        "gcr": 3.03,
+        "qa": 3.75,
+        "total": 12.61,
+        "passing": true
+      },
+      {
+        "name": "Riley Wilson",
+        "actuals": {
+          "cpd": 12.2,
+          "gcr": 44,
+          "qa": 73
+        },
+        "cpd": -35,
+        "gcr": -17.04,
+        "qa": -15.71,
+        "total": -67.75,
+        "passing": false
+      },
+      {
+        "name": "Drew Martinez",
+        "actuals": {
+          "cpd": 16,
+          "gcr": 69,
+          "qa": 86
+        },
+        "cpd": 0,
+        "gcr": 1.21,
+        "qa": 2.5,
+        "total": 3.71,
+        "passing": true
+      },
+      {
+        "name": "Avery Thompson",
+        "actuals": {
+          "cpd": 19.5,
+          "gcr": 96,
+          "qa": 97
+        },
+        "cpd": 35,
+        "gcr": 17.58,
+        "qa": 16.25,
+        "total": 68.83,
+        "passing": true
+      },
+      {
+        "name": "Quinn Anderson",
+        "actuals": {
+          "cpd": 14,
+          "gcr": 53,
+          "qa": 79
+        },
+        "cpd": -35,
+        "gcr": -10.37,
+        "qa": -7.14,
+        "total": -52.51,
+        "passing": false
+      },
+      {
+        "name": "Blake Nelson",
+        "actuals": {
+          "cpd": 17,
+          "gcr": 76,
+          "qa": 89
+        },
+        "cpd": 11.67,
+        "gcr": 5.45,
+        "qa": 6.25,
+        "total": 23.37,
+        "passing": true
+      }
+    ],
+    "averages": {
+      "cpd": 16.19,
+      "gcr": 71.08,
+      "qa": 86.25,
+      "cpdPts": 1.26,
+      "gcrPts": 1.81,
+      "qaPts": 2.47,
+      "total": 5.55,
+      "passRate": 0.67,
+      "count": 12
+    }
+  },
+  "2026-04": {
+    "month": "2026-04",
+    "closedAt": "2026-04-28T17:00:00.000Z",
+    "config": {
+      "month": "2026-04",
+      "cpd": {
+        "min": 14,
+        "target": 17,
+        "max": 20
+      },
+      "gcr": {
+        "min": 40,
+        "target": 70,
+        "max": 100
+      },
+      "qa": {
+        "min": 70,
+        "target": 85,
+        "max": 100
+      }
+    },
+    "guides": [
+      {
+        "name": "Alex Chen",
+        "cpdMode": "perday",
+        "cpd": "19.5",
+        "gcrMode": "perday",
+        "gcr": "95",
+        "qa": "96",
+        "days": "21"
+      },
+      {
+        "name": "Jordan Smith",
+        "cpdMode": "perday",
+        "cpd": "18",
+        "gcrMode": "perday",
+        "gcr": "82",
+        "qa": "91",
+        "days": "21"
+      },
+      {
+        "name": "Maya Rodriguez",
+        "cpdMode": "perday",
+        "cpd": "17.2",
+        "gcrMode": "perday",
+        "gcr": "75",
+        "qa": "88",
+        "days": "21"
+      },
+      {
+        "name": "Tyler Johnson",
+        "cpdMode": "perday",
+        "cpd": "15.5",
+        "gcrMode": "perday",
+        "gcr": "65",
+        "qa": "84",
+        "days": "21"
+      },
+      {
+        "name": "Sam Williams",
+        "cpdMode": "perday",
+        "cpd": "17.8",
+        "gcrMode": "perday",
+        "gcr": "86",
+        "qa": "92",
+        "days": "21"
+      },
+      {
+        "name": "Casey Brown",
+        "cpdMode": "perday",
+        "cpd": "13.5",
+        "gcrMode": "perday",
+        "gcr": "52",
+        "qa": "77",
+        "days": "21"
+      },
+      {
+        "name": "Morgan Davis",
+        "cpdMode": "perday",
+        "cpd": "16",
+        "gcrMode": "perday",
+        "gcr": "71",
+        "qa": "86",
+        "days": "21"
+      },
+      {
+        "name": "Riley Wilson",
+        "cpdMode": "perday",
+        "cpd": "12.8",
+        "gcrMode": "perday",
+        "gcr": "46",
+        "qa": "74",
+        "days": "21"
+      },
+      {
+        "name": "Drew Martinez",
+        "cpdMode": "perday",
+        "cpd": "16.5",
+        "gcrMode": "perday",
+        "gcr": "72",
+        "qa": "87",
+        "days": "21"
+      },
+      {
+        "name": "Avery Thompson",
+        "cpdMode": "perday",
+        "cpd": "20",
+        "gcrMode": "perday",
+        "gcr": "99",
+        "qa": "98",
+        "days": "21"
+      },
+      {
+        "name": "Quinn Anderson",
+        "cpdMode": "perday",
+        "cpd": "14.5",
+        "gcrMode": "perday",
+        "gcr": "58",
+        "qa": "81",
+        "days": "21"
+      },
+      {
+        "name": "Blake Nelson",
+        "cpdMode": "perday",
+        "cpd": "17.5",
+        "gcrMode": "perday",
+        "gcr": "79",
+        "qa": "90",
+        "days": "21"
+      }
+    ],
+    "results": [
+      {
+        "name": "Alex Chen",
+        "actuals": {
+          "cpd": 19.5,
+          "gcr": 95,
+          "qa": 96
+        },
+        "cpd": 29.17,
+        "gcr": 16.67,
+        "qa": 14.67,
+        "total": 60.5,
+        "passing": true
+      },
+      {
+        "name": "Jordan Smith",
+        "actuals": {
+          "cpd": 18,
+          "gcr": 82,
+          "qa": 91
+        },
+        "cpd": 11.67,
+        "gcr": 8,
+        "qa": 8,
+        "total": 27.67,
+        "passing": true
+      },
+      {
+        "name": "Maya Rodriguez",
+        "actuals": {
+          "cpd": 17.2,
+          "gcr": 75,
+          "qa": 88
+        },
+        "cpd": 2.33,
+        "gcr": 3.33,
+        "qa": 4,
+        "total": 9.67,
+        "passing": true
+      },
+      {
+        "name": "Tyler Johnson",
+        "actuals": {
+          "cpd": 15.5,
+          "gcr": 65,
+          "qa": 84
+        },
+        "cpd": -17.5,
+        "gcr": -3.33,
+        "qa": -1.33,
+        "total": -22.17,
+        "passing": false
+      },
+      {
+        "name": "Sam Williams",
+        "actuals": {
+          "cpd": 17.8,
+          "gcr": 86,
+          "qa": 92
+        },
+        "cpd": 9.33,
+        "gcr": 10.67,
+        "qa": 9.33,
+        "total": 29.33,
+        "passing": true
+      },
+      {
+        "name": "Casey Brown",
+        "actuals": {
+          "cpd": 13.5,
+          "gcr": 52,
+          "qa": 77
+        },
+        "cpd": -35,
+        "gcr": -12,
+        "qa": -10.67,
+        "total": -57.67,
+        "passing": false
+      },
+      {
+        "name": "Morgan Davis",
+        "actuals": {
+          "cpd": 16,
+          "gcr": 71,
+          "qa": 86
+        },
+        "cpd": -11.67,
+        "gcr": 0.67,
+        "qa": 1.33,
+        "total": -9.67,
+        "passing": false
+      },
+      {
+        "name": "Riley Wilson",
+        "actuals": {
+          "cpd": 12.8,
+          "gcr": 46,
+          "qa": 74
+        },
+        "cpd": -35,
+        "gcr": -16,
+        "qa": -14.67,
+        "total": -65.67,
+        "passing": false
+      },
+      {
+        "name": "Drew Martinez",
+        "actuals": {
+          "cpd": 16.5,
+          "gcr": 72,
+          "qa": 87
+        },
+        "cpd": -5.83,
+        "gcr": 1.33,
+        "qa": 2.67,
+        "total": -1.83,
+        "passing": false
+      },
+      {
+        "name": "Avery Thompson",
+        "actuals": {
+          "cpd": 20,
+          "gcr": 99,
+          "qa": 98
+        },
+        "cpd": 35,
+        "gcr": 19.33,
+        "qa": 17.33,
+        "total": 71.67,
+        "passing": true
+      },
+      {
+        "name": "Quinn Anderson",
+        "actuals": {
+          "cpd": 14.5,
+          "gcr": 58,
+          "qa": 81
+        },
+        "cpd": -29.17,
+        "gcr": -8,
+        "qa": -5.33,
+        "total": -42.5,
+        "passing": false
+      },
+      {
+        "name": "Blake Nelson",
+        "actuals": {
+          "cpd": 17.5,
+          "gcr": 79,
+          "qa": 90
+        },
+        "cpd": 5.83,
+        "gcr": 6,
+        "qa": 6.67,
+        "total": 18.5,
+        "passing": true
+      }
+    ],
+    "averages": {
+      "cpd": 16.57,
+      "gcr": 73.33,
+      "qa": 87,
+      "cpdPts": -3.4,
+      "gcrPts": 2.22,
+      "qaPts": 2.67,
+      "total": 1.49,
+      "passRate": 0.5,
+      "count": 12
+    }
+  }
+}
