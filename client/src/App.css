@@ -145,6 +145,19 @@ input:focus { outline: none; border-color: var(--blue); }
 }
 .btn-ghost:hover { color: var(--text); border-color: var(--text-muted); }
 
+.btn-danger {
+  background: transparent;
+  border: 1px solid #ef4444;
+  border-radius: 6px;
+  color: #ef4444;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.9rem;
+}
+.btn-danger:hover { background: #ef444420; }
+
+.clear-confirm { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.85rem; color: var(--text-muted); }
+
 .btn-remove {
   background: transparent;
   border: none;
@@ -511,6 +524,11 @@ input:focus { outline: none; border-color: var(--blue); }
 }
 .history-section h4 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); }
 .history-section-header { display: flex; align-items: center; justify-content: space-between; }
+
+.backup-section { margin-top: 1.5rem; }
+.backup-actions { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+
+.sample-data-bar { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; }
 
 .history-config-display { display: flex; flex-direction: column; gap: 0.4rem; }
 .history-config-row { display: flex; align-items: center; gap: 0.75rem; font-size: 0.9rem; }

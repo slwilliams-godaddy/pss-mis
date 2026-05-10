@@ -3,7 +3,7 @@ import { calculateMIS } from '../utils/misCalculator'
 import {
   getTeam, saveTeam, closeMonth,
   getArchivedMonths, getArchivedMonth, upsertArchivedMonth,
-  saveConfig,
+  saveConfig, exportBackup, importBackup, clearAllData, generateSampleData,
 } from '../utils/storage'
 
 const EMPTY_GUIDE = { name: '', cpdMode: 'perday', cpd: '', gcrMode: 'perday', gcr: '', qa: '', days: '' }
@@ -65,6 +65,49 @@ export default function SupervisorView({ config, onConfigSave }) {
   // Trend tabs
   const [trendGuide, setTrendGuide] = useState('')
   const [allArchiveData, setAllArchiveData] = useState(null)
+
+  const [backupMsg, setBackupMsg] = useState('')
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [confirmGenerate, setConfirmGenerate] = useState(false)
+  const restoreInputRef = useRef(null)
+
+  const handleExportBackup = () => {
+    const json = exportBackup()
+    const blob = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const date = new Date().toISOString().slice(0, 10)
+    a.download = `pss-mis-backup-${date}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    setBackupMsg('Backup downloaded.')
+    setTimeout(() => setBackupMsg(''), 3000)
+  }
+
+  const handleRestoreBackup = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const exportedAt = importBackup(ev.target.result)
+        setBackupMsg(`Restored from backup (${new Date(exportedAt).toLocaleString()}). Reloading…`)
+        setTimeout(() => window.location.reload(), 1200)
+      } catch (err) {
+        setBackupMsg(`Restore failed: ${err.message}`)
+      }
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
+  const handleGenerateSampleData = () => {
+    generateSampleData(config)
+    setConfirmGenerate(false)
+    setAllArchiveData(null)
+    fetchArchivedMonths()
+  }
 
   const isCurrentMonth = inputMonth === config.month
 
@@ -326,6 +369,24 @@ export default function SupervisorView({ config, onConfigSave }) {
       {/* ── INPUT TAB ── */}
       {tab === 'input' && (
         <div className="history-tab">
+          {/* Sample data generator */}
+          <div className="sample-data-bar">
+            {!confirmGenerate ? (
+              <button className="btn-ghost" onClick={() => {
+                if (archivedMonths?.length) setConfirmGenerate(true)
+                else handleGenerateSampleData()
+              }}>
+                Generate YTD Sample Data
+              </button>
+            ) : (
+              <span className="clear-confirm">
+                <span>This will overwrite existing history. Continue?</span>
+                <button className="btn-secondary" onClick={handleGenerateSampleData}>Yes, generate</button>
+                <button className="btn-ghost" onClick={() => setConfirmGenerate(false)}>Cancel</button>
+              </span>
+            )}
+          </div>
+
           {/* Month selector */}
           <div className="history-controls">
             <label className="history-month-select">
@@ -676,6 +737,32 @@ export default function SupervisorView({ config, onConfigSave }) {
               </div>
             </>
           )}
+          {/* Backup / Restore */}
+          <div className="history-section backup-section">
+            <h4>Data Backup</h4>
+            <div className="backup-actions">
+              <button className="btn-secondary" onClick={handleExportBackup}>Download Backup</button>
+              <button className="btn-secondary" onClick={() => restoreInputRef.current?.click()}>Restore from Backup</button>
+              <input
+                ref={restoreInputRef}
+                type="file"
+                accept=".json"
+                style={{ display: 'none' }}
+                onChange={handleRestoreBackup}
+              />
+              {!confirmClear ? (
+                <button className="btn-danger" onClick={() => setConfirmClear(true)}>Clear All Data</button>
+              ) : (
+                <span className="clear-confirm">
+                  <span>This will erase everything. Are you sure?</span>
+                  <button className="btn-danger" onClick={() => { clearAllData(); window.location.reload() }}>Yes, clear</button>
+                  <button className="btn-ghost" onClick={() => setConfirmClear(false)}>Cancel</button>
+                </span>
+              )}
+              {backupMsg && <span className="close-month-msg">{backupMsg}</span>}
+            </div>
+            <p className="subtext">Backup saves all config, team data, and archive history to a local file.</p>
+          </div>
         </div>
       )}
 
