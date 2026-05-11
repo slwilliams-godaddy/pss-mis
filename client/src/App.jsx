@@ -14,8 +14,6 @@ export default function App() {
 
   const handleSwitchRole = () => {
     setRole(null)
-    setSupervisorAuthed(false)
-    setSupervisorUser(null)
   }
 
   const handleConfigSave = (cfg) => {
@@ -329,7 +327,12 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <h1>PSS Merchant Impact Score</h1>
-        <button className="btn-ghost" onClick={handleSwitchRole}>Switch Role</button>
+        <div className="header-actions">
+          <button className="btn-ghost" onClick={handleSwitchRole}>Switch Role</button>
+          {role === 'supervisor' && (
+            <button className="btn-ghost" onClick={() => { setSupervisorAuthed(false); setSupervisorUser(null); setRole(null) }}>Log Out</button>
+          )}
+        </div>
       </header>
       <main>
         {role === 'guide'
