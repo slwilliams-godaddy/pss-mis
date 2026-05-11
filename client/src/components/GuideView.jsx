@@ -349,7 +349,7 @@ export default function GuideView({ config }) {
                       needed={guidance.onTrack.gcr}
                       daysRemaining={usedDays.R}
                       prefix="$"
-                      ceiling={config.gcr.max}
+                      ceiling={Infinity}
                     />
                     <QaGuidanceRow
                       currentAvg={usedActuals.qa}
@@ -386,7 +386,7 @@ export default function GuideView({ config }) {
                     needed={guidance.maximize.gcr}
                     daysRemaining={usedDays.R}
                     prefix="$"
-                    ceiling={config.gcr.max}
+                    ceiling={Infinity}
                   />
                   <QaGuidanceRow
                     currentAvg={usedActuals.qa}
