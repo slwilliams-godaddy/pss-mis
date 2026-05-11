@@ -5,20 +5,11 @@ import MetricRow from './MetricRow'
 
 // ── Math helpers ────────────────────────────────────────────────────────────
 
-function invertPts(pts, cfg, rail) {
-  if (pts >= rail.max) return cfg.max
-  if (pts <= rail.min) return cfg.min
-  if (pts >= 0) return (pts / rail.max) * (cfg.max - cfg.target) + cfg.target
-  return cfg.target + (pts / Math.abs(rail.min)) * (cfg.target - cfg.min)
-}
-
 function computeGuidance(cpd, gcr, qa, qaCount, qaRemaining, W, R, config) {
   const current = calculateMIS({ cpd, gcr, qa }, config)
   if (R <= 0) return { current, noRemaining: true }
 
   const totalDays = W + R
-  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
-  const ε = 0.01
 
   const neededRate = (finalVal, currentRate) =>
     (finalVal * totalDays - currentRate * W) / R
@@ -28,16 +19,12 @@ function computeGuidance(cpd, gcr, qa, qaCount, qaRemaining, W, R, config) {
       ? (finalQa * (qaCount + qaRemaining) - qa * qaCount) / qaRemaining
       : null
 
-  const onTrackCpdPts = clamp(ε - current.gcr - current.qa, SCORE_RAILS.cpd.min, SCORE_RAILS.cpd.max)
-  const onTrackGcrPts = clamp(ε - current.cpd - current.qa, SCORE_RAILS.gcr.min, SCORE_RAILS.gcr.max)
-  const onTrackQaPts  = clamp(ε - current.cpd - current.gcr, SCORE_RAILS.qa.min,  SCORE_RAILS.qa.max)
-
   return {
     current,
-    onTrack: {
-      cpd:   neededRate(invertPts(onTrackCpdPts, config.cpd, SCORE_RAILS.cpd), cpd),
-      gcr:   neededRate(invertPts(onTrackGcrPts, config.gcr, SCORE_RAILS.gcr), gcr),
-      qaAvg: neededFutureQaAvg(invertPts(onTrackQaPts, config.qa, SCORE_RAILS.qa)),
+    toTarget: {
+      cpd:   neededRate(config.cpd.target, cpd),
+      gcr:   neededRate(config.gcr.target, gcr),
+      qaAvg: neededFutureQaAvg(config.qa.target),
     },
     maximize: {
       cpd:   neededRate(config.cpd.max, cpd),
@@ -49,8 +36,10 @@ function computeGuidance(cpd, gcr, qa, qaCount, qaRemaining, W, R, config) {
 
 // ── Guidance row components ──────────────────────────────────────────────────
 
-function RateGuidanceRow({ label, current, needed, daysRemaining, prefix = '', ceiling }) {
+function RateGuidanceRow({ label, current, needed, daysRemaining, prefix = '', ceiling, aspirational = false }) {
   const fmt = v => `${prefix}${v.toFixed(2)}/day`
+  const fmtTotal = v => prefix ? `${prefix}${Math.round(v)}` : `${Math.ceil(v)}`
+  const greenThreshold = aspirational ? current * 1.25 : current + 0.005
   let cls, msg
   if (needed <= 0) {
     cls = 'good'
@@ -58,12 +47,14 @@ function RateGuidanceRow({ label, current, needed, daysRemaining, prefix = '', c
   } else if (needed > ceiling) {
     cls = 'bad'
     msg = `Not achievable — you'd need ${fmt(needed)} but the ceiling is ${fmt(ceiling)}.`
-  } else if (needed <= current + 0.005) {
+  } else if (needed <= greenThreshold) {
     cls = 'good'
-    msg = `Maintain your current pace of ${fmt(current)} — you're already on track.`
+    msg = aspirational && needed > current + 0.005
+      ? `Need ${fmt(needed)} for the remaining ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} — ${fmtTotal(needed * daysRemaining)} total (currently ${fmt(current)}).`
+      : `Maintain your current pace of ${fmt(current)} — you're already on track.`
   } else {
     cls = 'warn'
-    msg = `Need ${fmt(needed)} for the remaining ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} (currently ${fmt(current)}).`
+    msg = `Need ${fmt(needed)} for the remaining ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} — ${fmtTotal(needed * daysRemaining)} total (currently ${fmt(current)}).`
   }
   return (
     <div className={`guidance-row guidance-${cls}`}>
@@ -73,20 +64,30 @@ function RateGuidanceRow({ label, current, needed, daysRemaining, prefix = '', c
   )
 }
 
-function QaGuidanceRow({ currentAvg, qaCount, qaRemaining, needed }) {
+function QaGuidanceRow({ currentAvg, qaCount, qaRemaining, needed, qaTarget }) {
+  const evalWord = `${qaRemaining} remaining eval${qaRemaining !== 1 ? 's' : ''}`
   let cls, msg
   if (needed === null) {
     cls = 'neutral'
     msg = `Enter expected remaining evals above to see QA guidance.`
-  } else if (needed > 100) {
-    cls = 'bad'
-    msg = `Not achievable — your ${qaRemaining} remaining eval${qaRemaining !== 1 ? 's' : ''} would need to average ${needed.toFixed(1)}%, which exceeds 100%.`
   } else if (needed <= 0) {
     cls = 'good'
-    msg = `Any average on your remaining evals will keep you covered.`
+    msg = `Your current QA average already covers this with room to spare.`
+  } else if (needed > 100) {
+    const best = (currentAvg * qaCount + 100 * qaRemaining) / (qaCount + qaRemaining)
+    if (best > qaTarget) {
+      cls = 'warn'
+      msg = `Can't reach the maximum from here — scoring 100% on your ${evalWord} gives a best possible average of ${best.toFixed(1)}%.`
+    } else {
+      cls = 'bad'
+      msg = `Not achievable — even scoring 100% on your ${evalWord}, your best possible QA average is ${best.toFixed(1)}%, which is below the ${qaTarget}% target.`
+    }
+  } else if (needed <= currentAvg + 0.05) {
+    cls = 'good'
+    msg = `Maintain your current average of ${currentAvg.toFixed(1)}% — you're already covered.`
   } else {
-    cls = needed > currentAvg ? 'warn' : 'good'
-    msg = `Your ${qaRemaining} remaining eval${qaRemaining !== 1 ? 's' : ''} need to average ${needed.toFixed(1)}% (currently averaging ${currentAvg.toFixed(1)}%).`
+    cls = 'warn'
+    msg = `Need to average ${needed.toFixed(1)}% on your ${evalWord} (currently averaging ${currentAvg.toFixed(1)}%).`
   }
   return (
     <div className={`guidance-row guidance-${cls}`}>
@@ -111,6 +112,7 @@ export default function GuideView({ config }) {
   const [usedActuals, setUsedActuals] = useState(null)
   const [usedDays, setUsedDays] = useState(null)
   const [usedQa, setUsedQa] = useState(null)
+  const [channel, setChannel] = useState('voice')
 
   const W = parseFloat(daysWorked)
   const R = parseFloat(daysRemaining)
@@ -147,8 +149,10 @@ export default function GuideView({ config }) {
     const qaCt  = parseInt(qaCount) || 0
     const qaRem = parseInt(qaRemainingEvals) || 0
 
-    const mis = calculateMIS({ cpd, gcr, qa }, config)
-    const g   = computeGuidance(cpd, gcr, qa, qaCt, qaRem, W, R, config)
+    const gcrConfig = channel === 'messaging' ? config.gcrMessaging : config.gcrVoice
+    const effectiveConfig = { ...config, gcr: gcrConfig }
+    const mis = calculateMIS({ cpd, gcr, qa }, effectiveConfig)
+    const g   = computeGuidance(cpd, gcr, qa, qaCt, qaRem, W, R, effectiveConfig)
 
     setUsedActuals({ cpd, gcr, qa })
     setUsedDays({ W, R })
@@ -162,6 +166,7 @@ export default function GuideView({ config }) {
     const lines = [
       'PSS Merchant Impact Score Report',
       `Month: ${config.month}`,
+      `Channel: ${channel === 'messaging' ? 'Messaging' : 'Voice'}`,
       `Days Worked: ${usedDays?.W ?? ''}`,
       `Days Remaining: ${usedDays?.R ?? ''}`,
       `QA Evals Received: ${usedQa?.count ?? ''}`,
@@ -190,6 +195,15 @@ export default function GuideView({ config }) {
       <p className="subtext">Month: <strong>{config.month}</strong></p>
 
       <form onSubmit={handleCalculate} className="input-form">
+
+        {/* Row 0: Channel */}
+        <div className="guide-channel-row">
+          <span className="guide-channel-label">Channel</span>
+          <div className="inline-toggle">
+            <button type="button" className={`toggle-btn ${channel === 'voice' ? 'active' : ''}`} onClick={() => { setChannel('voice'); clearResult() }}>Voice</button>
+            <button type="button" className={`toggle-btn ${channel === 'messaging' ? 'active' : ''}`} onClick={() => { setChannel('messaging'); clearResult() }}>Messaging</button>
+          </div>
+        </div>
 
         {/* Row 1: Days */}
         <div className="form-grid">
@@ -257,9 +271,12 @@ export default function GuideView({ config }) {
               step="0.01" required
             />
             <span className="target-hint">
-              Target: {gcrMode === 'total' && W > 0
-                ? `$${(config.gcr.target * W).toFixed(0)} by now`
-                : `$${config.gcr.target}/day`}
+              {(() => {
+                const gcrCfg = channel === 'messaging' ? config.gcrMessaging : config.gcrVoice
+                return gcrMode === 'total' && W > 0
+                  ? `Target: $${(gcrCfg.target * W).toFixed(0)} by now`
+                  : `Target: $${gcrCfg.target}/day`
+              })()}
             </span>
             {computedGCR && <span className="computed-hint">= ${computedGCR}/day</span>}
           </label>
@@ -327,26 +344,26 @@ export default function GuideView({ config }) {
           ) : guidance && (
             <div className="guidance-card">
 
-              {/* ── To Get On Track (only if off track) ── */}
-              {!result.passing && (
+              {/* ── To Get On Track (any metric below target) ── */}
+              {(result.cpd < 0 || result.gcr < 0 || result.qa < 0) && (
                 <div className="guidance-section">
                   <h3 className="guidance-heading guidance-heading-warn">To Get On Track</h3>
                   <p className="guidance-intro">
                     With <strong>{usedDays.R}</strong> day{usedDays.R !== 1 ? 's' : ''} remaining,
-                    here's what each metric needs — adjusting one at a time while holding the others constant:
+                    here's what each metric needs to reach its target:
                   </p>
                   <div className="guidance-rows">
                     <RateGuidanceRow
                       label="CPD"
                       current={usedActuals.cpd}
-                      needed={guidance.onTrack.cpd}
+                      needed={guidance.toTarget.cpd}
                       daysRemaining={usedDays.R}
-                      ceiling={config.cpd.max}
+                      ceiling={Infinity}
                     />
                     <RateGuidanceRow
                       label="GCR"
                       current={usedActuals.gcr}
-                      needed={guidance.onTrack.gcr}
+                      needed={guidance.toTarget.gcr}
                       daysRemaining={usedDays.R}
                       prefix="$"
                       ceiling={Infinity}
@@ -355,7 +372,8 @@ export default function GuideView({ config }) {
                       currentAvg={usedActuals.qa}
                       qaCount={usedQa.count}
                       qaRemaining={usedQa.remaining}
-                      needed={guidance.onTrack.qaAvg}
+                      needed={guidance.toTarget.qaAvg}
+                      qaTarget={config.qa.target}
                     />
                   </div>
                 </div>
@@ -378,7 +396,8 @@ export default function GuideView({ config }) {
                     current={usedActuals.cpd}
                     needed={guidance.maximize.cpd}
                     daysRemaining={usedDays.R}
-                    ceiling={config.cpd.max}
+                    ceiling={Infinity}
+                    aspirational
                   />
                   <RateGuidanceRow
                     label="GCR"
@@ -387,12 +406,14 @@ export default function GuideView({ config }) {
                     daysRemaining={usedDays.R}
                     prefix="$"
                     ceiling={Infinity}
+                    aspirational
                   />
                   <QaGuidanceRow
                     currentAvg={usedActuals.qa}
                     qaCount={usedQa.count}
                     qaRemaining={usedQa.remaining}
                     needed={guidance.maximize.qaAvg}
+                    qaTarget={config.qa.target}
                   />
                 </div>
               </div>

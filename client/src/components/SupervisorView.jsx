@@ -6,7 +6,13 @@ import {
   saveConfig, exportBackup, importBackup, clearAllData, generateSampleData,
 } from '../utils/storage'
 
-const EMPTY_GUIDE = { name: '', cpdMode: 'perday', cpd: '', gcrMode: 'perday', gcr: '', qa: '', days: '' }
+const EMPTY_GUIDE = { name: '', channel: 'voice', cpdMode: 'perday', cpd: '', gcrMode: 'perday', gcr: '', qa: '', days: '' }
+const CONFIG_METRICS = [
+  { key: 'cpd',          label: 'CPD',            prefix: '',  suffix: ''  },
+  { key: 'gcrVoice',     label: 'GCR (Voice)',     prefix: '$', suffix: ''  },
+  { key: 'gcrMessaging', label: 'GCR (Messaging)', prefix: '$', suffix: ''  },
+  { key: 'qa',           label: 'QA',              prefix: '',  suffix: '%' },
+]
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const fmtMonth = (m) => { const [y, mm] = m.split('-'); return `${MONTH_NAMES[+mm - 1]} ${y}` }
 
@@ -129,7 +135,8 @@ export default function SupervisorView({ config, onConfigSave }) {
     const gcr = g.gcrMode === 'total' ? parseFloat(g.gcr) / days : parseFloat(g.gcr)
     const actuals = { cpd, gcr, qa: parseFloat(g.qa) }
     if (Object.values(actuals).some(isNaN)) return null
-    return { name: g.name || 'Unknown', actuals, ...calculateMIS(actuals, cfg) }
+    const gcrCfg = g.channel === 'messaging' ? (cfg.gcrMessaging ?? cfg.gcrVoice) : (cfg.gcrVoice ?? cfg.gcr)
+    return { name: g.name || 'Unknown', channel: g.channel || 'voice', actuals, ...calculateMIS(actuals, { ...cfg, gcr: gcrCfg }) }
   })
 
   const scoreColor = (score) => score > 0 ? '#22c55e' : score === 0 ? '#f59e0b' : '#ef4444'
@@ -191,7 +198,7 @@ export default function SupervisorView({ config, onConfigSave }) {
     } else {
       // Future month: pre-fill names from current month, empty actuals
       const data = getTeam()
-      const guides = data.guides?.filter(g => g.name).map(g => ({ ...EMPTY_GUIDE, name: g.name }))
+      const guides = data.guides?.filter(g => g.name).map(g => ({ ...EMPTY_GUIDE, name: g.name, channel: g.channel || 'voice' }))
       setInputGuides(guides?.length ? guides : [{ ...EMPTY_GUIDE }])
       setInputConfig({ ...config, month })
       setInputConfigDraft({ ...config, month })
@@ -453,18 +460,18 @@ export default function SupervisorView({ config, onConfigSave }) {
                         </div>
                       </div>
                     )}
-                    {['cpd', 'gcr', 'qa'].map(metric => (
-                      <div key={metric} className="history-config-edit-row">
-                        <span className="history-config-metric-label">{metric.toUpperCase()}</span>
+                    {CONFIG_METRICS.map(({ key, label }) => (
+                      <div key={key} className="history-config-edit-row">
+                        <span className="history-config-metric-label">{label}</span>
                         {['min', 'target', 'max'].map(field => (
                           <label key={field} className="history-config-field">
                             <span>{field}</span>
                             <input
                               type="number"
-                              value={inputConfigDraft[metric]?.[field] ?? ''}
+                              value={inputConfigDraft[key]?.[field] ?? ''}
                               onChange={e => setInputConfigDraft({
                                 ...inputConfigDraft,
-                                [metric]: { ...inputConfigDraft[metric], [field]: parseFloat(e.target.value) || e.target.value }
+                                [key]: { ...inputConfigDraft[key], [field]: parseFloat(e.target.value) || e.target.value }
                               })}
                               step="0.01"
                               required
@@ -481,20 +488,18 @@ export default function SupervisorView({ config, onConfigSave }) {
                   </form>
                 ) : (
                   <div className="history-config-display">
-                    {['cpd', 'gcr', 'qa'].map(metric => {
-                      const c = inputConfig[metric]
+                    {CONFIG_METRICS.map(({ key, label, prefix, suffix }) => {
+                      const c = inputConfig[key]
                       if (!c) return null
-                      const pfx = metric === 'gcr' ? '$' : ''
-                      const sfx = metric === 'qa' ? '%' : ''
                       return (
-                        <div key={metric} className="history-config-row">
-                          <span className="history-config-metric-label">{metric.toUpperCase()}</span>
+                        <div key={key} className="history-config-row">
+                          <span className="history-config-metric-label">{label}</span>
                           <span className="history-config-threshold">
-                            <span className="cfg-muted">{pfx}{c.min}{sfx}</span>
+                            <span className="cfg-muted">{prefix}{c.min}{suffix}</span>
                             <span className="cfg-sep">·</span>
-                            <span className="cfg-target">{pfx}{c.target}{sfx}</span>
+                            <span className="cfg-target">{prefix}{c.target}{suffix}</span>
                             <span className="cfg-sep">·</span>
-                            <span className="cfg-muted">{pfx}{c.max}{sfx}</span>
+                            <span className="cfg-muted">{prefix}{c.max}{suffix}</span>
                           </span>
                           <span className="cfg-hint">min · target · max</span>
                         </div>
@@ -593,10 +598,11 @@ export default function SupervisorView({ config, onConfigSave }) {
                         <thead>
                           <tr>
                             <th>Guide Name</th>
+                            <th>Channel</th>
                             <th>CPD <span className="th-hint">target: {inputConfig.cpd?.target}/day</span></th>
-                            <th>GCR <span className="th-hint">target: ${inputConfig.gcr?.target}/day</span></th>
+                            <th>GCR <span className="th-hint th-hint-stack"><span>Voice: ${inputConfig.gcrVoice?.target}/day</span><span>Msg: ${inputConfig.gcrMessaging?.target}/day</span></span></th>
                             <th>QA <span className="th-hint">target: {inputConfig.qa?.target}%</span></th>
-                            <th>Days</th>
+                            <th>Accountable Days</th>
                             <th></th>
                           </tr>
                         </thead>
@@ -611,6 +617,15 @@ export default function SupervisorView({ config, onConfigSave }) {
                                   <div className="cell-col">
                                     <div className="cell-header" />
                                     <input value={g.name} onChange={e => handleGuideChange(i, 'name', e.target.value)} placeholder="Name" />
+                                  </div>
+                                </td>
+                                <td>
+                                  <div className="cell-col">
+                                    <div className="cell-header" />
+                                    <select value={g.channel || 'voice'} onChange={e => handleGuideChange(i, 'channel', e.target.value)} className="channel-select">
+                                      <option value="voice">Voice</option>
+                                      <option value="messaging">Messaging</option>
+                                    </select>
                                   </div>
                                 </td>
                                 <td>
@@ -691,12 +706,13 @@ export default function SupervisorView({ config, onConfigSave }) {
                     {inputResults?.length > 0 ? (
                       <table className="score-table">
                         <thead>
-                          <tr><th>Name</th><th>CPD</th><th>GCR</th><th>QA</th><th>Total MIS</th><th>Status</th></tr>
+                          <tr><th>Name</th><th>Channel</th><th>CPD</th><th>GCR</th><th>QA</th><th>Total MIS</th><th>Status</th></tr>
                         </thead>
                         <tbody>
                           {inputResults.map((r, i) => r ? (
                             <tr key={i}>
                               <td>{r.name}</td>
+                              <td>{r.channel === 'messaging' ? 'Messaging' : 'Voice'}</td>
                               <td><div className="result-metric-cell"><span className="result-actual">{r.actuals.cpd.toFixed(2)}/day</span><span className="result-points" style={{ color: scoreColor(r.cpd) }}>{fmtSigned(r.cpd)} pts</span></div></td>
                               <td><div className="result-metric-cell"><span className="result-actual">${r.actuals.gcr.toFixed(2)}/day</span><span className="result-points" style={{ color: scoreColor(r.gcr) }}>{fmtSigned(r.gcr)} pts</span></div></td>
                               <td><div className="result-metric-cell"><span className="result-actual">{r.actuals.qa.toFixed(1)}%</span><span className="result-points" style={{ color: scoreColor(r.qa) }}>{fmtSigned(r.qa)} pts</span></div></td>

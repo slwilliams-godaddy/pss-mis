@@ -17,14 +17,15 @@ const DEFAULT_PASSWORD = 'changeme'
 
 const DEFAULT_CONFIG = {
   month: '2026-05',
-  cpd: { min: 14, target: 17, max: 20 },
-  gcr: { min: 40, target: 70, max: 100 },
-  qa:  { min: 70, target: 85, max: 100 },
+  cpd:          { min: 14, target: 17, max: 20  },
+  gcrVoice:     { min: 40, target: 70, max: 100 },
+  gcrMessaging: { min: 15, target: 30, max: 60  },
+  qa:           { min: 70, target: 85, max: 100 },
 }
 
 const DEFAULT_TEAM = {
   month: '2026-05',
-  guides: [{ name: '', cpdMode: 'perday', cpd: '', gcrMode: 'perday', gcr: '', qa: '', days: '' }],
+  guides: [{ name: '', channel: 'voice', cpdMode: 'perday', cpd: '', gcrMode: 'perday', gcr: '', qa: '', days: '' }],
 }
 
 const DEFAULT_ARCHIVE = {}
@@ -58,7 +59,14 @@ function computeAverages(results) {
 }
 
 export function getConfig() {
-  return read(KEYS.config, DEFAULT_CONFIG)
+  const cfg = read(KEYS.config, DEFAULT_CONFIG)
+  if (cfg.gcr && !cfg.gcrVoice) {
+    cfg.gcrVoice = { ...cfg.gcr }
+    cfg.gcrMessaging = { ...cfg.gcr }
+    delete cfg.gcr
+    write(KEYS.config, cfg)
+  }
+  return cfg
 }
 
 export function saveConfig(config) {
@@ -95,6 +103,7 @@ export function closeMonth(results, config) {
     month: team.month,
     guides: team.guides.map(g => ({
       name: g.name,
+      channel: g.channel || 'voice',
       cpdMode: 'perday', cpd: '',
       gcrMode: 'perday', gcr: '',
       qa: '', days: '',
@@ -140,20 +149,27 @@ export function generateSampleData(currentConfig) {
     const monthKey = `${year}-${String(m).padStart(2, '0')}`
     const cfg = {
       month: monthKey,
-      cpd: { min: Math.round(rand(12, 15)), target: Math.round(rand(15, 18)), max: Math.round(rand(18, 22)) },
-      gcr: { min: Math.round(rand(35, 45)), target: Math.round(rand(60, 75)), max: Math.round(rand(90, 110)) },
-      qa:  { min: Math.round(rand(67, 72)), target: Math.round(rand(82, 87)), max: 100 },
+      cpd:          { min: Math.round(rand(12, 15)), target: Math.round(rand(15, 18)), max: Math.round(rand(18, 22)) },
+      gcrVoice:     { min: Math.round(rand(35, 45)), target: Math.round(rand(60, 75)), max: Math.round(rand(90, 110)) },
+      gcrMessaging: { min: Math.round(rand(12, 18)), target: Math.round(rand(25, 35)), max: Math.round(rand(50, 70))  },
+      qa:           { min: Math.round(rand(67, 72)), target: Math.round(rand(82, 87)), max: 100 },
     }
-    const guides = SAMPLE_NAMES.map(name => ({
-      name,
-      cpdMode: 'perday', cpd: String(rand(cfg.cpd.min - 2, cfg.cpd.max + 2)),
-      gcrMode: 'perday', gcr: String(rand(cfg.gcr.min - 5, cfg.gcr.max + 5)),
-      qa: String(rand(cfg.qa.min - 5, 100)),
-      days: '21',
-    }))
+    const guides = SAMPLE_NAMES.map((name, i) => {
+      const channel = i < SAMPLE_NAMES.length / 2 ? 'voice' : 'messaging'
+      const gcrCfg = channel === 'messaging' ? cfg.gcrMessaging : cfg.gcrVoice
+      return {
+        name, channel,
+        cpdMode: 'perday', cpd: String(rand(cfg.cpd.min - 2, cfg.cpd.max + 2)),
+        gcrMode: 'perday', gcr: String(rand(gcrCfg.min - 5, gcrCfg.max + 5)),
+        qa: String(rand(cfg.qa.min - 5, 100)),
+        days: '21',
+      }
+    })
     const results = guides.map(g => {
+      const gcrCfg = g.channel === 'messaging' ? cfg.gcrMessaging : cfg.gcrVoice
+      const effectiveCfg = { ...cfg, gcr: gcrCfg }
       const actuals = { cpd: parseFloat(g.cpd), gcr: parseFloat(g.gcr), qa: parseFloat(g.qa) }
-      return { name: g.name, actuals, ...calculateMIS(actuals, cfg) }
+      return { name: g.name, channel: g.channel, actuals, ...calculateMIS(actuals, effectiveCfg) }
     })
     archive[monthKey] = {
       month: monthKey,

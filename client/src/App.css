@@ -169,6 +169,30 @@ input:focus { outline: none; border-color: var(--blue); }
 .btn-remove:hover { color: var(--red); }
 
 /* QA FIELDS ROW */
+.guide-channel-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.guide-channel-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.channel-select {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.8rem;
+  padding: 0.25rem 0.4rem;
+  cursor: pointer;
+  width: 100%;
+}
+.channel-select:focus { outline: none; border-color: var(--accent); }
+
 .qa-fields {
   display: flex;
   gap: 1rem;
@@ -437,6 +461,7 @@ input:focus { outline: none; border-color: var(--blue); }
 .mini-toggle:hover:not(.active) { color: var(--text); border-color: var(--text-muted); }
 
 .th-hint { font-weight: 400; color: var(--text-muted); font-size: 0.75rem; display: block; }
+.th-hint-stack { display: flex; flex-direction: column; gap: 0.1rem; }
 
 .invalid-row { color: var(--text-muted); font-style: italic; font-size: 0.85rem; }
 
@@ -586,9 +611,9 @@ input:focus { outline: none; border-color: var(--blue); }
 
 .sample-data-bar { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; }
 
-.history-config-display { display: flex; flex-direction: column; gap: 0.4rem; }
+.history-config-display { display: flex; flex-direction: column; gap: 0.5rem; }
 .history-config-row { display: flex; align-items: center; gap: 0.75rem; font-size: 0.9rem; }
-.history-config-metric-label { font-weight: 600; width: 2.5rem; }
+.history-config-metric-label { font-weight: 600; min-width: 9rem; flex-shrink: 0; }
 .history-config-threshold { display: flex; align-items: center; gap: 0.4rem; }
 .cfg-target { font-weight: 600; color: var(--text); }
 .cfg-muted { color: var(--text-muted); }
@@ -596,7 +621,9 @@ input:focus { outline: none; border-color: var(--blue); }
 .cfg-hint { font-size: 0.72rem; color: var(--text-muted); margin-left: 0.25rem; }
 
 .history-config-form { display: flex; flex-direction: column; gap: 0.6rem; }
-.history-config-edit-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.history-config-edit-row { display: grid; grid-template-columns: 9rem repeat(3, 80px); align-items: end; gap: 0.75rem; }
+.history-config-edit-row .history-config-metric-label { align-self: center; }
+.history-config-edit-row .month-selects { grid-column: 2 / -1; }
 .history-config-field { display: flex; flex-direction: column; gap: 0.2rem; }
 .history-config-field span { font-size: 0.72rem; color: var(--text-muted); text-transform: capitalize; }
 .history-config-field input { width: 80px; }
