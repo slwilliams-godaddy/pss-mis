@@ -767,7 +767,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                                 <td>
                                   <div className="cell-col">
                                     <div className="cell-header" />
-                                    <input type="number" value={g.days} onChange={e => handleGuideChange(i, 'days', e.target.value)} placeholder="# days" min="1" step="1" />
+                                    <input type="number" value={g.days} onChange={e => handleGuideChange(i, 'days', e.target.value)} placeholder="# days" min="0.1" step="0.1" />
                                   </div>
                                 </td>
                                 <td>

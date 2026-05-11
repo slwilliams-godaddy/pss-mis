@@ -186,7 +186,7 @@ export default function GuideView({ config }) {
               value={daysWorked}
               onChange={e => { setDaysWorked(e.target.value); clearResult() }}
               placeholder="e.g. 15"
-              min="0" step="0.5" required
+              min="0" step="0.1" required
             />
           </label>
           <label className="field-narrow">
@@ -196,7 +196,7 @@ export default function GuideView({ config }) {
               value={daysRemaining}
               onChange={e => { setDaysRemaining(e.target.value); clearResult() }}
               placeholder="e.g. 6"
-              min="0" step="0.5" required
+              min="0" step="0.1" required
             />
           </label>
           <div className="field-days-total">
