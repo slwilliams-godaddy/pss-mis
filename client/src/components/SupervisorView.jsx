@@ -4,6 +4,7 @@ import {
   getTeam, saveTeam, closeMonth,
   getArchivedMonths, getArchivedMonth, upsertArchivedMonth,
   saveConfig, exportBackup, importBackup, clearAllData, generateSampleData,
+  getSupervisorUsernames, addSupervisorUser, removeSupervisorUser, changeSupervisorPassword,
 } from '../utils/storage'
 
 const EMPTY_GUIDE = { name: '', channel: 'voice', cpdMode: 'perday', cpd: '', gcrMode: 'perday', gcr: '', qa: '', days: '' }
@@ -45,7 +46,7 @@ function Sparkline({ values, color, width = 130, height = 40 }) {
   )
 }
 
-export default function SupervisorView({ config, onConfigSave }) {
+export default function SupervisorView({ config, onConfigSave, currentUser }) {
   const [tab, setTab] = useState('input')
 
   // Input tab
@@ -76,6 +77,53 @@ export default function SupervisorView({ config, onConfigSave }) {
   const [confirmClear, setConfirmClear] = useState(false)
   const [confirmGenerate, setConfirmGenerate] = useState(false)
   const restoreInputRef = useRef(null)
+
+  const [showSettings, setShowSettings] = useState(false)
+  const [supervisorUsers, setSupervisorUsers] = useState(() => getSupervisorUsernames())
+
+  const [pwCurrent, setPwCurrent] = useState('')
+  const [pwNew, setPwNew] = useState('')
+  const [pwConfirm, setPwConfirm] = useState('')
+  const [pwMsg, setPwMsg] = useState(null)
+
+  const [newUsername, setNewUsername] = useState('')
+  const [newUserPw, setNewUserPw] = useState('')
+  const [addUserMsg, setAddUserMsg] = useState(null)
+
+  const handleChangePassword = (e) => {
+    e.preventDefault()
+    if (pwNew !== pwConfirm) { setPwMsg({ ok: false, text: 'New passwords do not match.' }); return }
+    try {
+      changeSupervisorPassword(currentUser, pwCurrent, pwNew)
+      setPwCurrent(''); setPwNew(''); setPwConfirm('')
+      setPwMsg({ ok: true, text: 'Password updated.' })
+      setTimeout(() => setPwMsg(null), 3000)
+    } catch (err) {
+      setPwMsg({ ok: false, text: err.message })
+    }
+  }
+
+  const handleAddUser = (e) => {
+    e.preventDefault()
+    try {
+      addSupervisorUser(newUsername.trim(), newUserPw)
+      setSupervisorUsers(getSupervisorUsernames())
+      setNewUsername(''); setNewUserPw('')
+      setAddUserMsg({ ok: true, text: `${newUsername.trim()} added.` })
+      setTimeout(() => setAddUserMsg(null), 3000)
+    } catch (err) {
+      setAddUserMsg({ ok: false, text: err.message })
+    }
+  }
+
+  const handleRemoveUser = (username) => {
+    try {
+      removeSupervisorUser(username)
+      setSupervisorUsers(getSupervisorUsernames())
+    } catch (err) {
+      setAddUserMsg({ ok: false, text: err.message })
+    }
+  }
 
   const handleExportBackup = () => {
     const json = exportBackup()
@@ -359,7 +407,69 @@ export default function SupervisorView({ config, onConfigSave }) {
 
   return (
     <div className="view-container">
-      <h2>Supervisor Dashboard</h2>
+      <div className="supervisor-header">
+        <h2>Supervisor Dashboard</h2>
+        <button className="btn-gear" title="Settings" onClick={() => { setShowSettings(true); setPwMsg(null) }}>⚙</button>
+      </div>
+
+      {showSettings && (
+        <div className="settings-overlay" onClick={() => setShowSettings(false)}>
+          <div className="settings-modal" onClick={e => e.stopPropagation()}>
+            <div className="settings-modal-header">
+              <h3>Settings</h3>
+              <button className="btn-ghost settings-close" onClick={() => setShowSettings(false)}>✕</button>
+            </div>
+
+            <h4>Change My Password</h4>
+            <form onSubmit={handleChangePassword} className="password-form">
+              <label className="password-field">
+                <span>Current password</span>
+                <input type="password" value={pwCurrent} onChange={e => setPwCurrent(e.target.value)} required autoComplete="current-password" />
+              </label>
+              <label className="password-field">
+                <span>New password</span>
+                <input type="password" value={pwNew} onChange={e => setPwNew(e.target.value)} required autoComplete="new-password" />
+              </label>
+              <label className="password-field">
+                <span>Confirm new password</span>
+                <input type="password" value={pwConfirm} onChange={e => setPwConfirm(e.target.value)} required autoComplete="new-password" />
+              </label>
+              <div className="password-actions">
+                <button type="submit" className="btn-primary">Update Password</button>
+                {pwMsg && <span className={pwMsg.ok ? 'close-month-msg' : 'close-month-msg error-msg'}>{pwMsg.text}</span>}
+              </div>
+            </form>
+
+            <div className="settings-divider" />
+
+            <h4>Supervisor Users</h4>
+            <ul className="user-list">
+              {supervisorUsers.map(u => (
+                <li key={u} className="user-list-item">
+                  <span>{u}{u === currentUser && <span className="user-you"> (you)</span>}</span>
+                  {u !== currentUser && (
+                    <button className="btn-ghost user-remove-btn" onClick={() => handleRemoveUser(u)}>Remove</button>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <form onSubmit={handleAddUser} className="password-form">
+              <label className="password-field">
+                <span>Username</span>
+                <input type="text" value={newUsername} onChange={e => setNewUsername(e.target.value)} required autoComplete="off" />
+              </label>
+              <label className="password-field">
+                <span>Password</span>
+                <input type="password" value={newUserPw} onChange={e => setNewUserPw(e.target.value)} required autoComplete="new-password" />
+              </label>
+              <div className="password-actions">
+                <button type="submit" className="btn-secondary">Add User</button>
+                {addUserMsg && <span className={addUserMsg.ok ? 'close-month-msg' : 'close-month-msg error-msg'}>{addUserMsg.text}</span>}
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <div className="tabs">
         {[['input', 'Input'], ['team-trend', 'Team Trend'], ['trend', 'Guide Trend']].map(([t, label]) => (
@@ -779,6 +889,7 @@ export default function SupervisorView({ config, onConfigSave }) {
             </div>
             <p className="subtext">Backup saves all config, team data, and archive history to a local file.</p>
           </div>
+
         </div>
       )}
 

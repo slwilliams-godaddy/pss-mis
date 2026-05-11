@@ -9,11 +9,13 @@ export default function App() {
   const [role, setRole] = useState(null)
   const [showAbout, setShowAbout] = useState(false)
   const [supervisorAuthed, setSupervisorAuthed] = useState(false)
+  const [supervisorUser, setSupervisorUser] = useState(null)
   const [config, setConfig] = useState(() => getConfig())
 
   const handleSwitchRole = () => {
     setRole(null)
     setSupervisorAuthed(false)
+    setSupervisorUser(null)
   }
 
   const handleConfigSave = (cfg) => {
@@ -318,7 +320,7 @@ export default function App() {
   if (role === 'supervisor' && !supervisorAuthed) {
     return (
       <PasswordGate
-        onSuccess={() => setSupervisorAuthed(true)}
+        onSuccess={(username) => { setSupervisorAuthed(true); setSupervisorUser(username) }}
       />
     )
   }
@@ -332,7 +334,7 @@ export default function App() {
       <main>
         {role === 'guide'
           ? <GuideView config={config} />
-          : <SupervisorView config={config} onConfigSave={handleConfigSave} />
+          : <SupervisorView config={config} onConfigSave={handleConfigSave} currentUser={supervisorUser} />
         }
       </main>
     </div>

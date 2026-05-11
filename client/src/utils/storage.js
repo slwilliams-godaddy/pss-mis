@@ -7,13 +7,16 @@ const SAMPLE_NAMES = [
 ]
 
 const KEYS = {
-  config:   'pss-mis:config',
-  team:     'pss-mis:team',
-  archive:  'pss-mis:archive',
-  password: 'pss-mis:password',
+  config:  'pss-mis:config',
+  team:    'pss-mis:team',
+  archive: 'pss-mis:archive',
+  users:   'pss-mis:users',
 }
 
-const DEFAULT_PASSWORD = 'changeme'
+const DEFAULT_USERS = [
+  { username: 'Lisa', password: 'changeme' },
+  { username: 'Stu',  password: 'xidsax-pubbar-tEtzi5' },
+]
 
 const DEFAULT_CONFIG = {
   month: '2026-05',
@@ -184,20 +187,59 @@ export function generateSampleData(currentConfig) {
   return archive
 }
 
-export function checkPassword(password) {
-  const stored = read(KEYS.password, DEFAULT_PASSWORD)
-  return password === stored
+function getUsers() {
+  // migrate old single-password storage
+  const oldPw = localStorage.getItem('pss-mis:password')
+  if (oldPw) {
+    const users = [{ username: 'Lisa', password: JSON.parse(oldPw) }]
+    write(KEYS.users, users)
+    localStorage.removeItem('pss-mis:password')
+    return users
+  }
+  return read(KEYS.users, DEFAULT_USERS)
+}
+
+export function checkUser(username, password) {
+  return getUsers().some(u => u.username === username && u.password === password)
+}
+
+export function getSupervisorUsernames() {
+  return getUsers().map(u => u.username)
+}
+
+export function addSupervisorUser(username, password) {
+  const users = getUsers()
+  if (users.some(u => u.username.toLowerCase() === username.toLowerCase()))
+    throw new Error('A user with that name already exists.')
+  write(KEYS.users, [...users, { username, password }])
+}
+
+export function removeSupervisorUser(username) {
+  const users = getUsers()
+  if (users.length <= 1) throw new Error('Cannot remove the last supervisor.')
+  write(KEYS.users, users.filter(u => u.username !== username))
+}
+
+export function changeSupervisorPassword(username, currentPassword, newPassword) {
+  const users = getUsers()
+  const idx = users.findIndex(u => u.username === username)
+  if (idx === -1) throw new Error('User not found.')
+  if (users[idx].password !== currentPassword) throw new Error('Current password is incorrect.')
+  if (newPassword.trim().length < 4) throw new Error('Password must be at least 4 characters.')
+  const updated = [...users]
+  updated[idx] = { ...updated[idx], password: newPassword }
+  write(KEYS.users, updated)
 }
 
 export function exportBackup() {
   const payload = {
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     data: {
-      config:   read(KEYS.config,   DEFAULT_CONFIG),
-      team:     read(KEYS.team,     DEFAULT_TEAM),
-      archive:  read(KEYS.archive,  DEFAULT_ARCHIVE),
-      password: read(KEYS.password, DEFAULT_PASSWORD),
+      config:  read(KEYS.config,  DEFAULT_CONFIG),
+      team:    read(KEYS.team,    DEFAULT_TEAM),
+      archive: read(KEYS.archive, DEFAULT_ARCHIVE),
+      users:   getUsers(),
     },
   }
   return JSON.stringify(payload, null, 2)
@@ -205,19 +247,18 @@ export function exportBackup() {
 
 export function clearAllData() {
   Object.values(KEYS).forEach(k => localStorage.removeItem(k))
+  localStorage.removeItem('pss-mis:password')
   write(KEYS.archive, {})
 }
 
 export function importBackup(jsonString) {
   const parsed = JSON.parse(jsonString)
-  if (!parsed || parsed.version !== 1 || !parsed.data) {
-    throw new Error('Invalid backup file format.')
-  }
-  const validKeys = new Set(Object.keys(KEYS))
-  Object.entries(parsed.data).forEach(([k, v]) => {
-    if (validKeys.has(k) && v !== null) {
-      write(KEYS[k], v)
-    }
-  })
+  if (!parsed || !parsed.data) throw new Error('Invalid backup file format.')
+  const { config, team, archive, users, password } = parsed.data
+  if (config)  write(KEYS.config,  config)
+  if (team)    write(KEYS.team,    team)
+  if (archive) write(KEYS.archive, archive)
+  if (users)   write(KEYS.users,   users)
+  else if (password) write(KEYS.users, [{ username: 'Lisa', password }])
   return parsed.exportedAt
 }

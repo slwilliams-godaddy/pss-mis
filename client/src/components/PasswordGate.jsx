@@ -1,17 +1,19 @@
 import { useState } from 'react'
-import { checkPassword } from '../utils/storage'
+import { checkUser, getSupervisorUsernames } from '../utils/storage'
 
 export default function PasswordGate({ onSuccess }) {
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const usernames = getSupervisorUsernames()
 
   const handleSubmit = (e) => {
     e.preventDefault()
     setError('')
-    if (checkPassword(password)) {
-      onSuccess()
+    if (checkUser(username, password)) {
+      onSuccess(username)
     } else {
-      setError('Incorrect password.')
+      setError('Incorrect username or password.')
     }
   }
 
@@ -19,14 +21,21 @@ export default function PasswordGate({ onSuccess }) {
     <div className="password-gate">
       <div className="password-card">
         <h2>Supervisor Access</h2>
-        <p>Enter the supervisor password to continue.</p>
         <form onSubmit={handleSubmit}>
+          <select
+            value={username}
+            onChange={e => { setUsername(e.target.value); setError('') }}
+            required
+            autoFocus
+          >
+            <option value="" disabled>Select user</option>
+            {usernames.map(u => <option key={u} value={u}>{u}</option>)}
+          </select>
           <input
             type="password"
             value={password}
             onChange={e => { setPassword(e.target.value); setError('') }}
             placeholder="Password"
-            autoFocus
             required
           />
           {error && <p className="gate-error">{error}</p>}
