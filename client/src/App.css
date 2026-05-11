@@ -88,7 +88,7 @@ main { flex: 1; padding: 2rem; max-width: 960px; margin: 0 auto; width: 100%; }
 
 .form-grid { display: flex; flex-wrap: nowrap; gap: 1rem; align-items: flex-start; }
 .form-grid label { flex: 1; min-width: 0; }
-.form-grid label.field-narrow { flex: 0 0 100px; }
+.form-grid label.field-narrow { flex: 0 0 130px; }
 
 label { display: flex; flex-direction: column; gap: 0.35rem; }
 label span { font-size: 0.85rem; font-weight: 500; color: var(--text-muted); }
