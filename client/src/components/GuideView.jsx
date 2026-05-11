@@ -161,34 +161,6 @@ export default function GuideView({ config }) {
     setGuidance(g)
   }
 
-  const handleExport = () => {
-    if (!result || !usedActuals) return
-    const lines = [
-      'PSS Merchant Impact Score Report',
-      `Month: ${config.month}`,
-      `Channel: ${channel === 'messaging' ? 'Messaging' : 'Voice'}`,
-      `Days Worked: ${usedDays?.W ?? ''}`,
-      `Days Remaining: ${usedDays?.R ?? ''}`,
-      `QA Evals Received: ${usedQa?.count ?? ''}`,
-      `Expected Remaining Evals: ${usedQa?.remaining ?? ''}`,
-      '',
-      'Metric,Actual (per day),Score',
-      `CPD,${usedActuals.cpd.toFixed(2)},${result.cpd}`,
-      `GCR,$${usedActuals.gcr.toFixed(2)},${result.gcr}`,
-      `QA,${usedActuals.qa.toFixed(1)}%,${result.qa}`,
-      '',
-      `Total MIS,${result.total}`,
-      `Status,${result.passing ? 'On Track' : 'Off Track'}`,
-    ]
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `MIS_${config.month}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
   return (
     <div className="view-container">
       <h2>My MIS Calculator</h2>
@@ -334,7 +306,6 @@ export default function GuideView({ config }) {
               <MetricRow label="QA"  score={result.qa}  railMin={SCORE_RAILS.qa.min}  railMax={SCORE_RAILS.qa.max}  />
             </div>
 
-            <button onClick={handleExport} className="btn-secondary">Export as CSV</button>
           </div>
 
           {guidance?.noRemaining ? (
