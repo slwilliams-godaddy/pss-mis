@@ -173,6 +173,11 @@ export default function App() {
                   </div>
                 </div>
 
+                <p>
+                  Each metric's point value is rounded to the nearest hundredth before being added to the Total MIS.
+                  The Total MIS is then independently rounded to the nearest hundredth as well.
+                </p>
+
                 <p>Each metric has a fixed point range that bounds how much it can contribute to or detract from the Total MIS:</p>
                 <table className="mis-rails-table">
                   <thead>
