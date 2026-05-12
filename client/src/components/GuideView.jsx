@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { calculateMIS, SCORE_RAILS } from '../utils/misCalculator'
-import { getMyScores, getConfig } from '../utils/sharepoint'
 import ScoreGauge from './ScoreGauge'
 import MetricRow from './MetricRow'
 
@@ -98,58 +97,9 @@ function QaGuidanceRow({ currentAvg, qaCount, qaRemaining, needed, qaTarget }) {
   )
 }
 
-// ── Helpers for My Scores tab ────────────────────────────────────────────────
-
-function computeScoreForRow(row, cfg) {
-  if (!cfg) return null
-  const days = parseFloat(row.days) || 1
-  let cpd = parseFloat(row.cpd)
-  let gcr = parseFloat(row.gcr)
-  const qa = parseFloat(row.qa)
-  if ([cpd, gcr, qa].some(isNaN)) return null
-  if (row.cpdMode === 'total') cpd = cpd / days
-  if (row.gcrMode === 'total') gcr = gcr / days
-  const gcrCfg = row.channel === 'messaging' ? cfg.gcrMessaging : cfg.gcrVoice
-  return calculateMIS({ cpd, gcr, qa }, { ...cfg, gcr: gcrCfg })
-}
-
-function fmtMetric(val, mode, days, prefix = '') {
-  const n = parseFloat(val)
-  if (isNaN(n)) return '—'
-  if (mode === 'total') return `${prefix}${n} total`
-  return `${prefix}${n}/day`
-}
-
 // ── Main component ───────────────────────────────────────────────────────────
 
-export default function GuideView({ config, currentUser }) {
-  const [tab, setTab] = useState('calculator')
-
-  // My Scores state
-  const [myScores, setMyScores] = useState([])
-  const [scoreConfigs, setScoreConfigs] = useState({})
-  const [scoresLoading, setScoresLoading] = useState(false)
-  const [scoresError, setScoresError] = useState('')
-
-  useEffect(() => {
-    if (tab !== 'myscores' || !currentUser?.email) return
-    setScoresLoading(true)
-    setScoresError('')
-    getMyScores(currentUser.email)
-      .then(async (rows) => {
-        setMyScores(rows)
-        const months = [...new Set(rows.map(r => r.month))]
-        const configs = {}
-        await Promise.all(months.map(async m => {
-          const cfg = await getConfig(m)
-          if (cfg) configs[m] = cfg
-        }))
-        setScoreConfigs(configs)
-      })
-      .catch(err => setScoresError(err.message))
-      .finally(() => setScoresLoading(false))
-  }, [tab, currentUser?.email])
-
+export default function GuideView({ config }) {
   const [cpdMode, setCpdMode] = useState('perday')
   const [gcrMode, setGcrMode] = useState('perday')
   const [fields, setFields] = useState({ cpd: '', gcr: '', qa: '' })
@@ -213,68 +163,6 @@ export default function GuideView({ config, currentUser }) {
 
   return (
     <div className="view-container">
-
-      <div className="guide-tabs">
-        <button
-          className={`guide-tab${tab === 'calculator' ? ' active' : ''}`}
-          onClick={() => setTab('calculator')}
-        >Calculator</button>
-        <button
-          className={`guide-tab${tab === 'myscores' ? ' active' : ''}`}
-          onClick={() => setTab('myscores')}
-        >My Scores</button>
-      </div>
-
-      {tab === 'myscores' && (
-        <div className="my-scores-panel">
-          <h2>My Published Scores</h2>
-          {scoresLoading && <p className="subtext">Loading…</p>}
-          {scoresError && <p className="gate-error">{scoresError}</p>}
-          {!scoresLoading && !scoresError && myScores.length === 0 && (
-            <p className="subtext">No published scores yet.</p>
-          )}
-          {!scoresLoading && myScores.length > 0 && (
-            <table className="scores-history-table">
-              <thead>
-                <tr>
-                  <th>Month</th>
-                  <th>Channel</th>
-                  <th>CPD</th>
-                  <th>GCR</th>
-                  <th>QA</th>
-                  <th>Days</th>
-                  <th>MIS Score</th>
-                </tr>
-              </thead>
-              <tbody>
-                {myScores.map(row => {
-                  const cfg = scoreConfigs[row.month]
-                  const mis = computeScoreForRow(row, cfg)
-                  return (
-                    <tr key={row.id}>
-                      <td>{row.month}</td>
-                      <td>{row.channel === 'messaging' ? 'Messaging' : 'Voice'}</td>
-                      <td>{fmtMetric(row.cpd, row.cpdMode, row.days)}</td>
-                      <td>{fmtMetric(row.gcr, row.gcrMode, row.days, '$')}</td>
-                      <td>{row.qa ? `${row.qa}%` : '—'}</td>
-                      <td>{row.days || '—'}</td>
-                      <td>
-                        {mis
-                          ? <span className={`mis-badge ${mis.passing ? 'pass' : 'fail'}`}>
-                              {mis.total > 0 ? `+${mis.total}` : mis.total}
-                            </span>
-                          : '—'}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-
-      {tab === 'calculator' && <>
       <h2>My MIS Calculator</h2>
       <p className="subtext">Month: <strong>{config.month}</strong></p>
 
@@ -505,8 +393,6 @@ export default function GuideView({ config, currentUser }) {
           )}
         </>
       )}
-      </>}
-
     </div>
   )
 }
