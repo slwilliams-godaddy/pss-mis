@@ -1,13 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import { calculateMIS } from '../utils/misCalculator'
 import {
-  getTeam, saveTeam, closeMonth,
-  getArchivedMonths, getArchivedMonth, upsertArchivedMonth,
-  saveConfig, exportBackup, importBackup, clearAllData, generateSampleData,
-  getSupervisorUsernames, addSupervisorUser, removeSupervisorUser, changeSupervisorPassword,
-} from '../utils/storage'
+  getConfig, saveConfig,
+  getTeamScores, saveScore, deleteScore, publishScore, closeMonth as spCloseMonth, getArchivedMonths,
+  getGuides,
+} from '../utils/sharepoint'
 
-const EMPTY_GUIDE = { name: '', channel: 'voice', cpdMode: 'perday', cpd: '', gcrMode: 'perday', gcr: '', qa: '', days: '' }
+const EMPTY_GUIDE = { id: null, name: '', email: '', channel: 'voice', cpdMode: 'perday', cpd: '', gcrMode: 'perday', gcr: '', qa: '', days: '', published: false, monthClosed: false }
 const CONFIG_METRICS = [
   { key: 'cpd',          label: 'CPD',            prefix: '',  suffix: ''  },
   { key: 'gcrVoice',     label: 'GCR (Voice)',     prefix: '$', suffix: ''  },
@@ -21,6 +20,22 @@ function addMonths(ym, n) {
   const [y, m] = ym.split('-').map(Number)
   const d = new Date(y, m - 1 + n, 1)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+function computeAverages(valid) {
+  if (!valid.length) return null
+  const avg = arr => Math.round(arr.reduce((s, v) => s + v, 0) / arr.length * 100) / 100
+  return {
+    cpd:      avg(valid.map(r => r.actuals.cpd)),
+    gcr:      avg(valid.map(r => r.actuals.gcr)),
+    qa:       avg(valid.map(r => r.actuals.qa)),
+    cpdPts:   avg(valid.map(r => r.cpd)),
+    gcrPts:   avg(valid.map(r => r.gcr)),
+    qaPts:    avg(valid.map(r => r.qa)),
+    total:    avg(valid.map(r => r.total)),
+    passRate: Math.round(valid.filter(r => r.passing).length / valid.length * 100) / 100,
+    count:    valid.length,
+  }
 }
 
 function Sparkline({ values, color, width = 130, height = 40 }) {
@@ -54,17 +69,17 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
   const [inputGuides, setInputGuides] = useState([{ ...EMPTY_GUIDE }])
   const [inputConfig, setInputConfig] = useState({ ...config })
   const [inputResults, setInputResults] = useState(null)
-  const [inputSaveStatus, setInputSaveStatus] = useState(null)
   const [inputLoading, setInputLoading] = useState(false)
   const [editingInputConfig, setEditingInputConfig] = useState(false)
   const [inputConfigDraft, setInputConfigDraft] = useState({ ...config })
   const [inputConfigMsg, setInputConfigMsg] = useState('')
   const [closeMonthMsg, setCloseMonthMsg] = useState('')
-  const [saveMonthMsg, setSaveMonthMsg] = useState('')
-  const [rosterPickMonth, setRosterPickMonth] = useState('')
-  const [showRosterPicker, setShowRosterPicker] = useState(false)
+  const [saveMsg, setSaveMsg] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [deletedScoreIds, setDeletedScoreIds] = useState([])
   const [editingGuides, setEditingGuides] = useState(false)
-  const inputLoaded = useRef(false)
+  const [guidesRoster, setGuidesRoster] = useState([])
+  const [showRosterPicker, setShowRosterPicker] = useState(false)
 
   // Archive list (shared)
   const [archivedMonths, setArchivedMonths] = useState(null)
@@ -73,107 +88,11 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
   const [trendGuide, setTrendGuide] = useState('')
   const [allArchiveData, setAllArchiveData] = useState(null)
 
-  const [backupMsg, setBackupMsg] = useState('')
-  const [confirmClear, setConfirmClear] = useState(false)
-  const [confirmGenerate, setConfirmGenerate] = useState(false)
-  const restoreInputRef = useRef(null)
-
+  // Settings
   const [showSettings, setShowSettings] = useState(false)
-  const [supervisorUsers, setSupervisorUsers] = useState(() => getSupervisorUsernames())
 
-  const [pwCurrent, setPwCurrent] = useState('')
-  const [pwNew, setPwNew] = useState('')
-  const [pwConfirm, setPwConfirm] = useState('')
-  const [pwMsg, setPwMsg] = useState(null)
-
-  const [newUsername, setNewUsername] = useState('')
-  const [newUserPw, setNewUserPw] = useState('')
-  const [addUserMsg, setAddUserMsg] = useState(null)
-
-  const handleChangePassword = (e) => {
-    e.preventDefault()
-    if (pwNew !== pwConfirm) { setPwMsg({ ok: false, text: 'New passwords do not match.' }); return }
-    try {
-      changeSupervisorPassword(currentUser, pwCurrent, pwNew)
-      setPwCurrent(''); setPwNew(''); setPwConfirm('')
-      setPwMsg({ ok: true, text: 'Password updated.' })
-      setTimeout(() => setPwMsg(null), 3000)
-    } catch (err) {
-      setPwMsg({ ok: false, text: err.message })
-    }
-  }
-
-  const handleAddUser = (e) => {
-    e.preventDefault()
-    try {
-      addSupervisorUser(newUsername.trim(), newUserPw)
-      setSupervisorUsers(getSupervisorUsernames())
-      setNewUsername(''); setNewUserPw('')
-      setAddUserMsg({ ok: true, text: `${newUsername.trim()} added.` })
-      setTimeout(() => setAddUserMsg(null), 3000)
-    } catch (err) {
-      setAddUserMsg({ ok: false, text: err.message })
-    }
-  }
-
-  const handleRemoveUser = (username) => {
-    try {
-      removeSupervisorUser(username)
-      setSupervisorUsers(getSupervisorUsernames())
-    } catch (err) {
-      setAddUserMsg({ ok: false, text: err.message })
-    }
-  }
-
-  const handleExportBackup = () => {
-    const json = exportBackup()
-    const blob = new Blob([json], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    const date = new Date().toISOString().slice(0, 10)
-    a.download = `pss-mis-backup-${date}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-    setBackupMsg('Backup downloaded.')
-    setTimeout(() => setBackupMsg(''), 3000)
-  }
-
-  const handleRestoreBackup = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      try {
-        const exportedAt = importBackup(ev.target.result)
-        setBackupMsg(`Restored from backup (${new Date(exportedAt).toLocaleString()}). Reloading…`)
-        setTimeout(() => window.location.reload(), 1200)
-      } catch (err) {
-        setBackupMsg(`Restore failed: ${err.message}`)
-      }
-    }
-    reader.readAsText(file)
-    e.target.value = ''
-  }
-
-  const handleGenerateSampleData = () => {
-    generateSampleData(config)
-    setConfirmGenerate(false)
-    setAllArchiveData(null)
-    fetchArchivedMonths()
-  }
-
-  const isCurrentMonth = inputMonth === config.month
-
-  // All months to show in selector: archived (past) + current + next 3 future, newest first
-  const allInputMonths = (() => {
-    const set = new Set(archivedMonths || [])
-    set.add(config.month)
-    set.add(addMonths(config.month, 1))
-    set.add(addMonths(config.month, 2))
-    set.add(addMonths(config.month, 3))
-    return [...set].sort().reverse()
-  })()
+  const scoreColor = (score) => score > 0 ? '#22c55e' : score === 0 ? '#f59e0b' : '#ef4444'
+  const fmtSigned = (v) => { const n = parseFloat(Number(v).toFixed(2)); return (n > 0 ? '+' : '') + n }
 
   const calcResults = (guides, cfg) => guides.map(g => {
     const days = parseFloat(g.days)
@@ -187,91 +106,81 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     return { name: g.name || 'Unknown', channel: g.channel || 'voice', actuals, ...calculateMIS(actuals, { ...cfg, gcr: gcrCfg }) }
   })
 
-  const scoreColor = (score) => score > 0 ? '#22c55e' : score === 0 ? '#f59e0b' : '#ef4444'
-  const fmtSigned = (v) => { const n = parseFloat(Number(v).toFixed(2)); return (n > 0 ? '+' : '') + n }
+  // ── Data loading ─────────────────────────────────────────────────────────────
 
-  // Load archive list
-  const fetchArchivedMonths = () => {
-    setArchivedMonths(getArchivedMonths())
+  const fetchArchivedMonths = async () => {
+    const months = await getArchivedMonths()
+    setArchivedMonths(months)
   }
 
-  useEffect(() => { fetchArchivedMonths() }, [])
+  useEffect(() => {
+    fetchArchivedMonths()
+    getGuides().then(setGuidesRoster).catch(() => {})
+  }, [])
 
-  // Invalidate trend cache when archive list changes
   useEffect(() => { setAllArchiveData(null) }, [archivedMonths])
 
   // Load trend data when trend tab opens
   useEffect(() => {
     if ((tab !== 'trend' && tab !== 'team-trend') || allArchiveData !== null || !archivedMonths?.length) return
-    const map = {}
-    archivedMonths.forEach(m => {
-      const data = getArchivedMonth(m)
-      if (data) map[m] = data
-    })
-    setAllArchiveData(map)
+    async function loadTrends() {
+      try {
+        const archiveData = {}
+        await Promise.all(archivedMonths.map(async (month) => {
+          const [scores, cfg] = await Promise.all([getTeamScores(month), getConfig(month)])
+          if (!cfg) return
+          const results = scores.map(s => {
+            const days = parseFloat(s.days)
+            const cpd = s.cpdMode === 'total' ? parseFloat(s.cpd) / days : parseFloat(s.cpd)
+            const gcr = s.gcrMode === 'total' ? parseFloat(s.gcr) / days : parseFloat(s.gcr)
+            const actuals = { cpd, gcr, qa: parseFloat(s.qa) }
+            if (Object.values(actuals).some(isNaN)) return null
+            const gcrCfg = s.channel === 'messaging' ? cfg.gcrMessaging : cfg.gcrVoice
+            return { name: s.name, channel: s.channel, actuals, ...calculateMIS(actuals, { ...cfg, gcr: gcrCfg }) }
+          })
+          const valid = results.filter(Boolean)
+          archiveData[month] = { month, results, averages: computeAverages(valid) }
+        }))
+        setAllArchiveData(archiveData)
+      } catch { setAllArchiveData({}) }
+    }
+    loadTrends()
   }, [tab, archivedMonths])
 
-  // Load data for the selected input month
-  const loadInputMonth = (month) => {
+  const loadInputMonth = async (month) => {
     setInputLoading(true)
-    inputLoaded.current = false
     setInputResults(null)
     setEditingGuides(false)
     setCloseMonthMsg('')
-    setSaveMonthMsg('')
+    setSaveMsg('')
     setInputConfigMsg('')
     setEditingInputConfig(false)
     setShowRosterPicker(false)
+    setDeletedScoreIds([])
 
-    if (month === config.month) {
-      const data = getTeam()
-      if (data.guides?.length > 0 && data.guides.some(g => g.name)) {
-        setInputGuides(data.guides)
+    try {
+      const [scores, cfg] = await Promise.all([
+        getTeamScores(month),
+        getConfig(month),
+      ])
+      const loadedCfg = cfg || { ...config, month }
+      setInputConfig(loadedCfg)
+      setInputConfigDraft({ ...loadedCfg })
+      if (scores.length > 0) {
+        setInputGuides(scores)
       } else {
         setInputGuides([{ ...EMPTY_GUIDE }])
         setShowRosterPicker(true)
       }
-      setInputConfig({ ...config })
-      setInputConfigDraft({ ...config })
-    } else if (archivedMonths?.includes(month)) {
-      const data = getArchivedMonth(month)
-      if (data) {
-        setInputGuides(data.guides?.length ? data.guides : [{ ...EMPTY_GUIDE }])
-        setInputConfig(data.config ? { ...data.config } : { ...config })
-        setInputConfigDraft(data.config ? { ...data.config } : { ...config })
-        setInputResults(data.results?.length ? data.results : null)
-      } else {
-        setInputGuides([{ ...EMPTY_GUIDE }])
-      }
-    } else {
-      // Future month: pre-fill names from current month, empty actuals
-      const data = getTeam()
-      const guides = data.guides?.filter(g => g.name).map(g => ({ ...EMPTY_GUIDE, name: g.name, channel: g.channel || 'voice' }))
-      setInputGuides(guides?.length ? guides : [{ ...EMPTY_GUIDE }])
-      setInputConfig({ ...config, month })
-      setInputConfigDraft({ ...config, month })
+    } catch {
+      setInputGuides([{ ...EMPTY_GUIDE }])
     }
-
     setInputLoading(false)
-    inputLoaded.current = true
   }
 
   useEffect(() => { loadInputMonth(inputMonth) }, [inputMonth])
 
-  // Auto-save for current month guide changes
-  useEffect(() => {
-    if (!inputLoaded.current || !isCurrentMonth) return
-    setInputSaveStatus('saving')
-    const timer = setTimeout(() => {
-      try {
-        saveTeam(config.month, inputGuides)
-        setInputSaveStatus('saved')
-      } catch {
-        setInputSaveStatus('error')
-      }
-    }, 1000)
-    return () => clearTimeout(timer)
-  }, [inputGuides])
+  // ── Write handlers ────────────────────────────────────────────────────────────
 
   const handleGuideChange = (i, field, value) => {
     setInputGuides(inputGuides.map((g, idx) => idx === i ? { ...g, [field]: value } : g))
@@ -285,81 +194,98 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     setInputResults(null)
   }
 
-  const handleCalculate = (e) => {
-    e && e.preventDefault()
+  const handleRemoveGuide = (i) => {
+    if (inputGuides.length === 1) return
+    const guide = inputGuides[i]
+    if (guide.id) setDeletedScoreIds(ids => [...ids, guide.id])
+    setInputGuides(inputGuides.filter((_, idx) => idx !== i))
+    setInputResults(null)
+  }
+
+  const handleCalculate = () => {
     setInputResults(calcResults(inputGuides, inputConfig))
   }
 
-  const handleSaveMonth = () => {
-    setSaveMonthMsg('')
-    const results = calcResults(inputGuides, inputConfig)
+  const handleSaveTeam = async () => {
+    setSaving(true)
+    setSaveMsg('')
     try {
-      const updated = upsertArchivedMonth(inputMonth, { guides: inputGuides, results, config: inputConfig })
-      setInputResults(updated.results || null)
-      setSaveMonthMsg('Saved.')
-      setEditingGuides(false)
-      setAllArchiveData(null)
-      fetchArchivedMonths()
-    } catch { setSaveMonthMsg('Error saving.') }
+      const updated = [...inputGuides]
+      for (let i = 0; i < updated.length; i++) {
+        if (!updated[i].name) continue
+        const saved = await saveScore(updated[i], inputMonth)
+        updated[i] = { ...updated[i], id: saved.id }
+      }
+      await Promise.all(deletedScoreIds.map(id => deleteScore(id)))
+      setDeletedScoreIds([])
+      setInputGuides(updated)
+      setSaveMsg('Saved.')
+      setTimeout(() => setSaveMsg(''), 3000)
+    } catch (err) {
+      setSaveMsg(`Save failed: ${err.message}`)
+    }
+    setSaving(false)
   }
 
-  const handleCloseMonth = () => {
-    setCloseMonthMsg('')
-    const results = calcResults(inputGuides, inputConfig)
+  const handlePublish = async (i) => {
+    const guide = inputGuides[i]
+    if (!guide.id) { setSaveMsg('Save first before publishing.'); return }
     try {
-      const { current } = closeMonth(results, inputConfig)
-      inputLoaded.current = false
-      setInputGuides(current.guides)
-      setInputResults(null)
-      setInputSaveStatus(null)
-      inputLoaded.current = true
-      setCloseMonthMsg(`${config.month} archived.`)
-      fetchArchivedMonths()
-    } catch (e) { setCloseMonthMsg(`Error: ${e.message}`) }
-  }
-
-  const handleSaveInputConfig = (e) => {
-    e.preventDefault()
-    setInputConfigMsg('')
-    if (isCurrentMonth) {
-      try {
-        const saved = saveConfig(inputConfigDraft)
-        onConfigSave(saved)
-        setInputConfig({ ...saved })
-        setInputConfigDraft({ ...saved })
-        setEditingInputConfig(false)
-        setInputConfigMsg('Config saved.')
-      } catch { setInputConfigMsg('Error saving config.') }
-    } else {
-      const results = calcResults(inputGuides, inputConfigDraft)
-      try {
-        const updated = upsertArchivedMonth(inputMonth, { guides: inputGuides, results, config: inputConfigDraft })
-        setInputConfig({ ...updated.config })
-        setInputConfigDraft({ ...updated.config })
-        setInputResults(updated.results || null)
-        setEditingInputConfig(false)
-        setInputConfigMsg('Config saved.')
-        setAllArchiveData(null)
-      } catch { setInputConfigMsg('Error saving config.') }
+      await publishScore(guide.id, !guide.published)
+      setInputGuides(inputGuides.map((g, idx) => idx === i ? { ...g, published: !g.published } : g))
+    } catch (err) {
+      setSaveMsg(`Publish failed: ${err.message}`)
     }
   }
 
-  const handleLoadRoster = (month) => {
-    if (!month) return
-    const data = getArchivedMonth(month)
-    if (!data?.guides?.length) return
-    inputLoaded.current = false
-    setInputGuides(data.guides.map(g => ({ ...EMPTY_GUIDE, name: g.name })))
+  const handleCloseMonth = async () => {
+    setCloseMonthMsg('')
+    try {
+      await handleSaveTeam()
+      await spCloseMonth(inputMonth)
+      setCloseMonthMsg(`${fmtMonth(inputMonth)} closed.`)
+      await fetchArchivedMonths()
+    } catch (err) {
+      setCloseMonthMsg(`Error: ${err.message}`)
+    }
+  }
+
+  const handleSaveMonth = async () => {
+    setSaveMsg('')
+    try {
+      await handleSaveTeam()
+      await fetchArchivedMonths()
+      setEditingGuides(false)
+      setAllArchiveData(null)
+    } catch (err) {
+      setSaveMsg(`Error: ${err.message}`)
+    }
+  }
+
+  const handleSaveInputConfig = async (e) => {
+    e.preventDefault()
+    setInputConfigMsg('')
+    try {
+      const saved = await saveConfig(inputConfigDraft)
+      if (inputMonth === config.month) onConfigSave(saved)
+      setInputConfig({ ...saved })
+      setInputConfigDraft({ ...saved })
+      setEditingInputConfig(false)
+      setInputConfigMsg('Config saved.')
+    } catch { setInputConfigMsg('Error saving config.') }
+  }
+
+  const handleLoadFromRoster = () => {
+    if (!guidesRoster.length) return
+    setInputGuides(guidesRoster.map(g => ({ ...EMPTY_GUIDE, name: g.name, email: g.email, channel: g.channel })))
     setInputResults(null)
     setShowRosterPicker(false)
-    inputLoaded.current = true
   }
 
   const exportCSV = () => {
-    const results = inputResults
-    if (!results) return
+    if (!inputResults) return
     const header = 'Name,CPD (per day),CPD Points,GCR (per day),GCR Points,QA (%),QA Points,Total MIS,Status'
-    const rows = results.map(r =>
+    const rows = inputResults.map(r =>
       r ? `${r.name},${r.actuals.cpd.toFixed(2)},${r.cpd},${r.actuals.gcr.toFixed(2)},${r.gcr},${r.actuals.qa.toFixed(1)}%,${r.qa},${r.total},${r.passing ? 'On Track' : 'Off Track'}` : ''
     )
     const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv' })
@@ -371,7 +297,20 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     URL.revokeObjectURL(url)
   }
 
-  // Trend derived values
+  // ── Derived values ────────────────────────────────────────────────────────────
+
+  const isCurrentMonth = inputMonth === config.month
+  const isFuture = inputMonth !== config.month && !(archivedMonths || []).includes(inputMonth)
+
+  const allInputMonths = (() => {
+    const set = new Set(archivedMonths || [])
+    set.add(config.month)
+    set.add(addMonths(config.month, 1))
+    set.add(addMonths(config.month, 2))
+    set.add(addMonths(config.month, 3))
+    return [...set].sort().reverse()
+  })()
+
   const allGuideNames = allArchiveData
     ? [...new Set(Object.values(allArchiveData).flatMap(d => (d.results || []).filter(Boolean).map(r => r.name)))].sort()
     : []
@@ -403,13 +342,13 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
 
   const trendDelta = (arr) => arr.length >= 2 ? arr[arr.length - 1] - arr[arr.length - 2] : null
 
-  const isFuture = inputMonth !== config.month && !(archivedMonths || []).includes(inputMonth)
+  // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
     <div className="view-container">
       <div className="supervisor-header">
         <h2>Supervisor Dashboard</h2>
-        <button className="btn-gear" title="Settings" onClick={() => { setShowSettings(true); setPwMsg(null) }}>⚙</button>
+        <button className="btn-gear" title="Settings" onClick={() => setShowSettings(true)}>⚙</button>
       </div>
 
       {showSettings && (
@@ -419,65 +358,17 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
               <h3>Settings</h3>
               <button className="btn-ghost settings-close" onClick={() => setShowSettings(false)}>✕</button>
             </div>
-
-            <h4>Change My Password</h4>
-            <form onSubmit={handleChangePassword} className="password-form">
-              <label className="password-field">
-                <span>Current password</span>
-                <input type="password" value={pwCurrent} onChange={e => setPwCurrent(e.target.value)} required autoComplete="current-password" />
-              </label>
-              <label className="password-field">
-                <span>New password</span>
-                <input type="password" value={pwNew} onChange={e => setPwNew(e.target.value)} required autoComplete="new-password" />
-              </label>
-              <label className="password-field">
-                <span>Confirm new password</span>
-                <input type="password" value={pwConfirm} onChange={e => setPwConfirm(e.target.value)} required autoComplete="new-password" />
-              </label>
-              <div className="password-actions">
-                <button type="submit" className="btn-primary">Update Password</button>
-                {pwMsg && <span className={pwMsg.ok ? 'close-month-msg' : 'close-month-msg error-msg'}>{pwMsg.text}</span>}
-              </div>
-            </form>
-
-            <div className="settings-divider" />
-
-            <h4>Supervisor Users</h4>
-            <ul className="user-list">
-              {supervisorUsers.map(u => (
-                <li key={u} className="user-list-item">
-                  <span>{u}{u === currentUser && <span className="user-you"> (you)</span>}</span>
-                  {u !== currentUser && (
-                    <button className="btn-ghost user-remove-btn" onClick={() => handleRemoveUser(u)}>Remove</button>
-                  )}
-                </li>
-              ))}
-            </ul>
-            <form onSubmit={handleAddUser} className="password-form">
-              <label className="password-field">
-                <span>Username</span>
-                <input type="text" value={newUsername} onChange={e => setNewUsername(e.target.value)} required autoComplete="off" />
-              </label>
-              <label className="password-field">
-                <span>Password</span>
-                <input type="password" value={newUserPw} onChange={e => setNewUserPw(e.target.value)} required autoComplete="new-password" />
-              </label>
-              <div className="password-actions">
-                <button type="submit" className="btn-secondary">Add User</button>
-                {addUserMsg && <span className={addUserMsg.ok ? 'close-month-msg' : 'close-month-msg error-msg'}>{addUserMsg.text}</span>}
-              </div>
-            </form>
+            <p className="subtext">
+              Supervisor access is managed via the <strong>MIS_Supervisors</strong> SharePoint group.
+              To add or remove supervisors, update group membership in SharePoint.
+            </p>
           </div>
         </div>
       )}
 
       <div className="tabs">
         {[['input', 'Input'], ['team-trend', 'Team Trend'], ['trend', 'Guide Trend']].map(([t, label]) => (
-          <button
-            key={t}
-            className={`tab-btn ${tab === t ? 'active' : ''}`}
-            onClick={() => setTab(t)}
-          >
+          <button key={t} className={`tab-btn ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
             {label}
           </button>
         ))}
@@ -486,23 +377,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
       {/* ── INPUT TAB ── */}
       {tab === 'input' && (
         <div className="history-tab">
-          {/* Sample data generator */}
-          <div className="sample-data-bar">
-            {!confirmGenerate ? (
-              <button className="btn-ghost" onClick={() => {
-                if (archivedMonths?.length) setConfirmGenerate(true)
-                else handleGenerateSampleData()
-              }}>
-                Generate YTD Sample Data
-              </button>
-            ) : (
-              <span className="clear-confirm">
-                <span>This will overwrite existing history. Continue?</span>
-                <button className="btn-secondary" onClick={handleGenerateSampleData}>Yes, generate</button>
-                <button className="btn-ghost" onClick={() => setConfirmGenerate(false)}>Cancel</button>
-              </span>
-            )}
-          </div>
 
           {/* Month selector */}
           <div className="history-controls">
@@ -591,7 +465,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                       </div>
                     ))}
                     <div className="history-config-form-actions">
-                      <button type="submit" className="btn-primary">{isCurrentMonth ? 'Save Config' : 'Save & Recalculate'}</button>
+                      <button type="submit" className="btn-primary">Save Config</button>
                       <button type="button" className="btn-ghost" onClick={() => { setEditingInputConfig(false); setInputConfigDraft({ ...inputConfig }); setInputConfigMsg('') }}>Cancel</button>
                       {inputConfigMsg && <span className="close-month-msg">{inputConfigMsg}</span>}
                     </div>
@@ -619,23 +493,13 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                 )}
               </div>
 
-              {/* Roster picker for current month (new month) */}
-              {isCurrentMonth && showRosterPicker && (
+              {/* Roster picker for new months */}
+              {showRosterPicker && guidesRoster.length > 0 && (
                 <div className="new-month-banner">
-                  <span>Import guide names from a previous month?</span>
+                  <span>Load guide roster from SharePoint?</span>
                   <div className="new-month-controls">
-                    <select
-                      value={rosterPickMonth}
-                      onChange={e => setRosterPickMonth(e.target.value)}
-                      disabled={!archivedMonths?.length}
-                    >
-                      <option value="">— select month —</option>
-                      {(archivedMonths || []).map(m => (
-                        <option key={m} value={m}>{fmtMonth(m)}</option>
-                      ))}
-                    </select>
-                    <button type="button" className="btn-secondary" disabled={!rosterPickMonth} onClick={() => handleLoadRoster(rosterPickMonth)}>
-                      Import Names
+                    <button type="button" className="btn-secondary" onClick={handleLoadFromRoster}>
+                      Load Roster
                     </button>
                     <button type="button" className="btn-ghost" onClick={() => setShowRosterPicker(false)}>
                       Start Fresh
@@ -644,7 +508,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                 </div>
               )}
 
-              {/* Team averages (archived months with data) */}
+              {/* Team averages (archived months) */}
               {!isCurrentMonth && !isFuture && inputResults && (() => {
                 const valid = inputResults.filter(Boolean)
                 if (!valid.length) return null
@@ -693,14 +557,8 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                   <h3>
                     {isFuture ? `Guides — ${fmtMonth(inputMonth)}` : isCurrentMonth ? `${fmtMonth(inputMonth)} — In Progress` : `${fmtMonth(inputMonth)} Team Results`}
                   </h3>
-                  {isCurrentMonth && inputSaveStatus && (
-                    <span className={`save-status ${inputSaveStatus}`}>
-                      {inputSaveStatus === 'saving' ? 'Saving…' : inputSaveStatus === 'saved' ? 'Saved' : 'Save failed'}
-                    </span>
-                  )}
                 </div>
 
-                {/* Editable guide table — shown for current month always, or for past/future when editingGuides */}
                 {(isCurrentMonth || isFuture || editingGuides) ? (
                   <>
                     <div className="bulk-table-wrap">
@@ -713,6 +571,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                             <th>GCR <span className="th-hint th-hint-stack"><span>Voice: ${inputConfig.gcrVoice?.target}/day</span><span>Msg: ${inputConfig.gcrMessaging?.target}/day</span></span></th>
                             <th>QA <span className="th-hint">target: {inputConfig.qa?.target}%</span></th>
                             <th>Accountable Days</th>
+                            <th>Published</th>
                             <th></th>
                           </tr>
                         </thead>
@@ -727,6 +586,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                                   <div className="cell-col">
                                     <div className="cell-header" />
                                     <input value={g.name} onChange={e => handleGuideChange(i, 'name', e.target.value)} placeholder="Name" />
+                                    <input type="email" value={g.email} onChange={e => handleGuideChange(i, 'email', e.target.value)} placeholder="email@company.com" className="email-hint" />
                                   </div>
                                 </td>
                                 <td>
@@ -773,11 +633,20 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                                 <td>
                                   <div className="cell-col">
                                     <div className="cell-header" />
-                                    <button type="button" className="btn-remove" onClick={() => {
-                                      if (inputGuides.length === 1) return
-                                      setInputGuides(inputGuides.filter((_, idx) => idx !== i))
-                                      setInputResults(null)
-                                    }}>✕</button>
+                                    <button
+                                      type="button"
+                                      className={`mini-toggle ${g.published ? 'active' : ''}`}
+                                      onClick={() => handlePublish(i)}
+                                      title={g.id ? (g.published ? 'Unpublish' : 'Publish to guide') : 'Save first'}
+                                    >
+                                      {g.published ? '✓' : '—'}
+                                    </button>
+                                  </div>
+                                </td>
+                                <td>
+                                  <div className="cell-col">
+                                    <div className="cell-header" />
+                                    <button type="button" className="btn-remove" onClick={() => handleRemoveGuide(i)}>✕</button>
                                   </div>
                                 </td>
                               </tr>
@@ -788,14 +657,13 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                     </div>
                     <div className="bulk-actions">
                       <button type="button" className="btn-secondary" onClick={() => { setInputGuides([...inputGuides, { ...EMPTY_GUIDE }]); setInputResults(null) }}>+ Add Guide</button>
-                      {isCurrentMonth ? (
-                        <button type="button" className="btn-primary" onClick={handleCalculate}>Calculate All</button>
-                      ) : (
-                        <button type="button" className="btn-primary" onClick={handleSaveMonth}>Save &amp; Recalculate</button>
-                      )}
+                      <button type="button" className="btn-primary" onClick={handleCalculate}>Calculate All</button>
+                      <button type="button" className="btn-secondary" onClick={handleSaveTeam} disabled={saving}>
+                        {saving ? 'Saving…' : 'Save'}
+                      </button>
                       {isCurrentMonth && (
                         <div className="bulk-actions-right">
-                          <button type="button" className="btn-close-month" onClick={handleCloseMonth}>
+                          <button type="button" className="btn-close-month" onClick={handleCloseMonth} disabled={saving}>
                             Close {config.month}
                           </button>
                           {closeMonthMsg && <span className="close-month-msg">{closeMonthMsg}</span>}
@@ -804,11 +672,15 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                       {!isCurrentMonth && editingGuides && (
                         <button type="button" className="btn-ghost" onClick={() => { setEditingGuides(false); loadInputMonth(inputMonth) }}>Cancel</button>
                       )}
-                      {saveMonthMsg && <span className="close-month-msg">{saveMonthMsg}</span>}
+                      {!isCurrentMonth && !editingGuides && (
+                        <button type="button" className="btn-secondary" onClick={handleSaveMonth} disabled={saving}>
+                          {saving ? 'Saving…' : 'Save & Recalculate'}
+                        </button>
+                      )}
+                      {saveMsg && <span className="close-month-msg">{saveMsg}</span>}
                     </div>
                   </>
                 ) : (
-                  /* Read-only results for past month */
                   <>
                     <div style={{ marginBottom: '0.75rem' }}>
                       <button className="btn-secondary" onClick={() => { setEditingGuides(true); setInputResults(null) }}>Edit Month</button>
@@ -863,33 +735,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
               </div>
             </>
           )}
-          {/* Backup / Restore */}
-          <div className="history-section backup-section">
-            <h4>Data Backup</h4>
-            <div className="backup-actions">
-              <button className="btn-secondary" onClick={handleExportBackup}>Download Backup</button>
-              <button className="btn-secondary" onClick={() => restoreInputRef.current?.click()}>Restore from Backup</button>
-              <input
-                ref={restoreInputRef}
-                type="file"
-                accept=".json"
-                style={{ display: 'none' }}
-                onChange={handleRestoreBackup}
-              />
-              {!confirmClear ? (
-                <button className="btn-danger" onClick={() => setConfirmClear(true)}>Clear All Data</button>
-              ) : (
-                <span className="clear-confirm">
-                  <span>This will erase everything. Are you sure?</span>
-                  <button className="btn-danger" onClick={() => { clearAllData(); window.location.reload() }}>Yes, clear</button>
-                  <button className="btn-ghost" onClick={() => setConfirmClear(false)}>Cancel</button>
-                </span>
-              )}
-              {backupMsg && <span className="close-month-msg">{backupMsg}</span>}
-            </div>
-            <p className="subtext">Backup saves all config, team data, and archive history to a local file.</p>
-          </div>
-
         </div>
       )}
 
@@ -897,11 +742,11 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
       {tab === 'team-trend' && (
         <div className="trend-tab">
           {!archivedMonths?.length ? (
-            <p className="subtext">No archived months yet. Close a month first to see trends.</p>
+            <p className="subtext">No closed months yet. Close a month first to see trends.</p>
           ) : !allArchiveData ? (
             <p className="subtext">Loading…</p>
           ) : teamTrendRows.length === 0 ? (
-            <p className="subtext">No team averages found. Averages are computed when a month is closed.</p>
+            <p className="subtext">No team averages found.</p>
           ) : (() => {
             const ttCpdVals = teamTrendRows.map(r => r.cpd)
             const ttGcrVals = teamTrendRows.map(r => r.gcr)
@@ -977,7 +822,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
       {tab === 'trend' && (
         <div className="trend-tab">
           {!archivedMonths?.length ? (
-            <p className="subtext">No archived months yet. Close a month first to see trends.</p>
+            <p className="subtext">No closed months yet. Close a month first to see trends.</p>
           ) : (
             <>
               <div className="trend-guide-select">
