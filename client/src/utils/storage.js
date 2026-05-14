@@ -359,6 +359,65 @@ export async function deleteGuideRow(id) {
   if (error) throw new Error(error.message)
 }
 
+// ── QA Reviews ────────────────────────────────────────────────────────────────
+
+export async function getQaReviews(month) {
+  const { data, error } = await supabase
+    .from('qa_reviews')
+    .select('*')
+    .eq('month', month)
+    .order('guide_name')
+    .order('review_date')
+  if (error) throw new Error(error.message)
+  return data
+}
+
+export async function addQaReview({ guideName, score, reviewDate }) {
+  const month = reviewDate.slice(0, 7)
+  const { data, error } = await supabase
+    .from('qa_reviews')
+    .insert({ guide_name: guideName, score, review_date: reviewDate, month })
+    .select('id')
+    .single()
+  if (error) throw new Error(error.message)
+  await syncQaAverage(guideName, month)
+  return data.id
+}
+
+export async function updateQaReview(id, guideName, month, { score, reviewDate }) {
+  const newMonth = reviewDate.slice(0, 7)
+  const { error } = await supabase
+    .from('qa_reviews')
+    .update({ score, review_date: reviewDate, month: newMonth })
+    .eq('id', id)
+  if (error) throw new Error(error.message)
+  await syncQaAverage(guideName, newMonth)
+  if (newMonth !== month) await syncQaAverage(guideName, month)
+}
+
+export async function deleteQaReview(id, guideName, month) {
+  const { error } = await supabase.from('qa_reviews').delete().eq('id', id)
+  if (error) throw new Error(error.message)
+  await syncQaAverage(guideName, month)
+}
+
+async function syncQaAverage(guideName, month) {
+  const { data, error } = await supabase
+    .from('qa_reviews')
+    .select('score')
+    .eq('guide_name', guideName)
+    .eq('month', month)
+  if (error) return
+  const avg = data.length
+    ? Math.round(data.reduce((s, r) => s + Number(r.score), 0) / data.length * 100) / 100
+    : null
+  await supabase
+    .from('mis_scores')
+    .update({ qa: avg })
+    .eq('guide_name', guideName)
+    .eq('month', month)
+}
+
 export async function publishMonth(month) {
   const { error } = await supabase
     .from('mis_scores')

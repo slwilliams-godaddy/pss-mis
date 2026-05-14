@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { calculateMIS } from '../utils/misCalculator'
 import {
   getTeam, saveTeam, deleteGuideRow, clearMonthData,
@@ -6,6 +6,7 @@ import {
   saveConfig,
   getSupervisorUsernames, addSupervisorUser, removeSupervisorUser, changeSupervisorPassword,
   getGuides, getGuidesWithHistory, addGuide, updateGuide, deleteGuide, resetGuidePassword,
+  getQaReviews, addQaReview, updateQaReview, deleteQaReview,
 } from '../utils/storage'
 
 const EMPTY_GUIDE = { name: '', email: '', channel: 'voice', cpdMode: 'perday', cpd: '', gcrMode: 'perday', gcr: '', qa: '', days: '' }
@@ -62,6 +63,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
   const [rosterPickMonth, setRosterPickMonth] = useState('')
   const [showRosterPicker, setShowRosterPicker] = useState(false)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const [inputQaAverages, setInputQaAverages] = useState({})
 
   // userEdited ref: only set true by actual user edits, not by data loads.
   // This prevents auto-save from firing immediately after loading month data.
@@ -97,6 +99,20 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
   const [addGuideName, setAddGuideName] = useState('')
   const [addGuideChannel, setAddGuideChannel] = useState('voice')
   const [addGuideMsg, setAddGuideMsg] = useState(null)
+
+  // QA Reviews tab
+  const [qaMonth, setQaMonth] = useState(config.month)
+  const [qaReviews, setQaReviews] = useState([])
+  const [qaLoading, setQaLoading] = useState(false)
+  const [qaError, setQaError] = useState('')
+  const [qaGuideName, setQaGuideName] = useState('')
+  const [qaScore, setQaScore] = useState('')
+  const [qaDate, setQaDate] = useState(new Date().toISOString().slice(0, 10))
+  const [qaAddMsg, setQaAddMsg] = useState('')
+  const [qaGuideNames, setQaGuideNames] = useState([])
+  const [editingReviewId, setEditingReviewId] = useState(null)
+  const [editReviewScore, setEditReviewScore] = useState('')
+  const [editReviewDate, setEditReviewDate] = useState('')
 
   const handleChangePassword = async (e) => {
     e.preventDefault()
@@ -247,6 +263,22 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
 
   useEffect(() => { loadInputMonth(inputMonth) }, [inputMonth])
 
+  useEffect(() => {
+    getQaReviews(inputMonth).then(reviews => {
+      const map = {}
+      reviews.forEach(r => {
+        if (!map[r.guide_name]) map[r.guide_name] = { sum: 0, count: 0 }
+        map[r.guide_name].sum += Number(r.score)
+        map[r.guide_name].count += 1
+      })
+      const avgs = {}
+      Object.entries(map).forEach(([name, { sum, count }]) => {
+        avgs[name] = Math.round(sum / count * 100) / 100
+      })
+      setInputQaAverages(avgs)
+    }).catch(() => {})
+  }, [inputMonth])
+
   // Debounced auto-save for all months
   useEffect(() => {
     if (!userEdited.current) return
@@ -362,6 +394,19 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     if (tab === 'manage-team' && teamGuides === null) loadTeamGuides()
   }, [tab])
 
+  useEffect(() => {
+    if (tab !== 'qa') return
+    let cancelled = false
+    setQaLoading(true); setQaError('')
+    getQaReviews(qaMonth)
+      .then(data => { if (!cancelled) { setQaReviews(data); setQaLoading(false) } })
+      .catch(err => { if (!cancelled) { setQaError(err.message); setQaLoading(false) } })
+    getGuides()
+      .then(guides => { if (!cancelled) setQaGuideNames(guides.filter(g => g.active).map(g => g.name)) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [tab, qaMonth])
+
   const handleAddGuide = async (e) => {
     e.preventDefault()
     setAddGuideMsg(null)
@@ -418,6 +463,36 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     }
   }
 
+  const handleAddQaReview = async () => {
+    const score = parseFloat(qaScore)
+    if (!qaGuideName) return setQaAddMsg('Select a guide.')
+    if (isNaN(score) || score < 0 || score > 100) return setQaAddMsg('Score must be 0–100.')
+    if (!qaDate) return setQaAddMsg('Select a date.')
+    setQaAddMsg('')
+    try {
+      await addQaReview({ guideName: qaGuideName, score, reviewDate: qaDate })
+      setQaScore('')
+      setQaReviews(await getQaReviews(qaMonth))
+    } catch (err) { setQaAddMsg(err.message) }
+  }
+
+  const handleDeleteQaReview = async (review) => {
+    try {
+      await deleteQaReview(review.id, review.guide_name, review.month)
+      setQaReviews(await getQaReviews(qaMonth))
+    } catch (err) { setQaError(err.message) }
+  }
+
+  const handleSaveEditReview = async (review) => {
+    const score = parseFloat(editReviewScore)
+    if (isNaN(score) || score < 0 || score > 100) return
+    try {
+      await updateQaReview(review.id, review.guide_name, review.month, { score, reviewDate: editReviewDate })
+      setEditingReviewId(null)
+      setQaReviews(await getQaReviews(qaMonth))
+    } catch (err) { setQaError(err.message) }
+  }
+
   // Trend derived values — only use months that are not the current config month
   const trendMonths = Object.keys(allArchiveData || {}).filter(m => m !== config.month)
 
@@ -451,6 +526,17 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     : []
 
   const trendDelta = (arr) => arr.length >= 2 ? arr[arr.length - 1] - arr[arr.length - 2] : null
+
+  const groupedQaReviews = useMemo(() => {
+    const map = {}
+    qaReviews.forEach(r => { if (!map[r.guide_name]) map[r.guide_name] = []; map[r.guide_name].push(r) })
+    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).map(([name, reviews]) => ({
+      name, reviews,
+      avg: reviews.length
+        ? Math.round(reviews.reduce((s, r) => s + Number(r.score), 0) / reviews.length * 100) / 100
+        : null,
+    }))
+  }, [qaReviews])
 
   return (
     <div className="view-container">
@@ -535,7 +621,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
       )}
 
       <div className="tabs">
-        {[['input', 'Input'], ['team-trend', 'Team Trend'], ['trend', 'Guide Trend'], ['manage-team', 'Manage Team']].map(([t, label]) => (
+        {[['input', 'Input'], ['qa', 'QA Reviews'], ['team-trend', 'Team Trend'], ['trend', 'Guide Trend'], ['manage-team', 'Manage Team']].map(([t, label]) => (
           <button
             key={t}
             className={`tab-btn ${tab === t ? 'active' : ''}`}
@@ -825,6 +911,13 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                               <div className="cell-col">
                                 <div className="cell-header" />
                                 <input type="number" value={g.qa} onChange={e => handleGuideChange(i, 'qa', e.target.value)} placeholder="QA %" step="0.01" min="0" max="100" />
+                                {(() => {
+                                  const avg = inputQaAverages[g.name]
+                                  if (avg == null) return null
+                                  const typed = parseFloat(g.qa)
+                                  if (isNaN(typed) || Math.abs(typed - avg) < 0.005) return null
+                                  return <span className="qa-mismatch-hint" title={`Review average is ${avg}`}>⚠ avg {avg}</span>
+                                })()}
                               </div>
                             </td>
                             <td>
@@ -1091,6 +1184,84 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* ── QA REVIEWS TAB ── */}
+      {tab === 'qa' && (
+        <div className="qa-tab">
+          <div className="month-selects">
+            <label>Month</label>
+            <select value={qaMonth} onChange={e => setQaMonth(e.target.value)}>
+              {allInputMonths.map(m => <option key={m} value={m}>{fmtMonth(m)}</option>)}
+            </select>
+          </div>
+
+          <div className="qa-add-form">
+            <h3>Add Review</h3>
+            <div className="qa-add-row">
+              <select value={qaGuideName} onChange={e => setQaGuideName(e.target.value)}>
+                <option value="">— Select guide —</option>
+                {qaGuideNames.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <input
+                type="number" min="0" max="100" placeholder="Score (0–100)"
+                value={qaScore} onChange={e => setQaScore(e.target.value)}
+              />
+              <input type="date" value={qaDate} onChange={e => setQaDate(e.target.value)} />
+              <button className="btn-primary" onClick={handleAddQaReview}>Add</button>
+            </div>
+            {qaAddMsg && <p className="qa-msg-error">{qaAddMsg}</p>}
+          </div>
+
+          {qaLoading ? <p className="subtext">Loading…</p>
+            : qaError ? <p className="error-msg">{qaError}</p>
+            : groupedQaReviews.length === 0 ? <p className="subtext">No reviews for {fmtMonth(qaMonth)}.</p>
+            : (
+              <div className="qa-guide-list">
+                {groupedQaReviews.map(({ name, reviews, avg }) => (
+                  <div key={name} className="qa-guide-card">
+                    <div className="qa-guide-header">
+                      <span className="qa-guide-name">{name}</span>
+                      <span className={`qa-count-badge${reviews.length < 4 ? ' qa-warn' : ''}`}>
+                        {reviews.length} review{reviews.length !== 1 ? 's' : ''}
+                        {reviews.length < 4 && ' — min 4 required'}
+                      </span>
+                      <span className="qa-avg">Avg: {avg !== null ? avg.toFixed(2) : '—'}</span>
+                    </div>
+                    <table className="qa-reviews-table">
+                      <thead><tr><th>Date</th><th>Score</th><th></th></tr></thead>
+                      <tbody>
+                        {reviews.map(r => (
+                          <tr key={r.id}>
+                            {editingReviewId === r.id ? (
+                              <>
+                                <td><input type="date" className="qa-edit-input" value={editReviewDate} onChange={e => setEditReviewDate(e.target.value)} /></td>
+                                <td><input type="number" className="qa-edit-input" min="0" max="100" step="0.01" value={editReviewScore} onChange={e => setEditReviewScore(e.target.value)} /></td>
+                                <td className="qa-row-actions">
+                                  <button className="btn-sm btn-primary" onClick={() => handleSaveEditReview(r)}>Save</button>
+                                  <button className="btn-sm btn-ghost" onClick={() => setEditingReviewId(null)}>Cancel</button>
+                                </td>
+                              </>
+                            ) : (
+                              <>
+                                <td>{r.review_date}</td>
+                                <td>{Number(r.score).toFixed(2)}</td>
+                                <td className="qa-row-actions">
+                                  <button className="btn-sm btn-ghost" onClick={() => { setEditingReviewId(r.id); setEditReviewScore(String(r.score)); setEditReviewDate(r.review_date) }}>Edit</button>
+                                  <button className="btn-sm btn-danger" onClick={() => handleDeleteQaReview(r)}>Remove</button>
+                                </td>
+                              </>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </div>
+            )
+          }
         </div>
       )}
 
