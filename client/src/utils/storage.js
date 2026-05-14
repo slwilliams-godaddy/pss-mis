@@ -163,6 +163,26 @@ function configToRow(cfg) {
   }
 }
 
+export async function getConfigMonths() {
+  const { data, error } = await supabase
+    .from('mis_config')
+    .select('month')
+    .order('month', { ascending: false })
+  if (error) throw new Error(error.message)
+  return data.map(r => r.month)
+}
+
+export async function getConfigForMonth(month) {
+  const { data, error } = await supabase
+    .from('mis_config')
+    .select('*')
+    .eq('month', month)
+    .limit(1)
+  if (error) throw new Error(error.message)
+  if (!data || !data.length) return null
+  return rowToConfig(data[0])
+}
+
 export async function getConfig() {
   const { data, error } = await supabase
     .from('mis_config')

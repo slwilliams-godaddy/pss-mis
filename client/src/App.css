@@ -972,6 +972,25 @@ input:focus { outline: none; border-color: var(--blue); }
 .mis-pts-neg { color: var(--red);   font-weight: 600; }
 .mis-calc-cell { font-family: 'SF Mono', 'Fira Mono', 'Consolas', monospace; font-size: 0.78rem; color: var(--text-muted); }
 
+/* CALCULATOR MONTH SELECTOR */
+.calc-month-select {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.25rem;
+}
+
+.calc-month-select select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.88rem;
+  padding: 0.35rem 0.6rem;
+}
+
+.calc-month-select select:focus { outline: none; border-color: var(--blue); }
+
 /* MANAGE TEAM TAB */
 .manage-team-tab {
   display: flex;

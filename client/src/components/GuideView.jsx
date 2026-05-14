@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { calculateMIS, SCORE_RAILS } from '../utils/misCalculator'
 import ScoreGauge from './ScoreGauge'
 import MetricRow from './MetricRow'
-import { getGuideHistory, checkGuide, getGuideNames, changeGuidePassword } from '../utils/storage'
+import { getGuideHistory, checkGuide, getGuideNames, changeGuidePassword, getConfigMonths, getConfigForMonth } from '../utils/storage'
 
 // ── Math helpers ────────────────────────────────────────────────────────────
 
@@ -338,6 +338,9 @@ function HistoryPanel({ guideUser, onLogout }) {
 
 // ── Main component ───────────────────────────────────────────────────────────
 
+const MONTH_NAMES_CALC = ['January','February','March','April','May','June','July','August','September','October','November','December']
+const fmtMonthCalc = (m) => { const [y, mm] = m.split('-'); return `${MONTH_NAMES_CALC[+mm - 1]} ${y}` }
+
 export default function GuideView({ config, guideUser, onGuideLogin, onGuideLogout }) {
   const [activeTab, setActiveTab] = useState('calculator')
   const [cpdMode, setCpdMode] = useState('perday')
@@ -353,6 +356,22 @@ export default function GuideView({ config, guideUser, onGuideLogin, onGuideLogo
   const [usedDays, setUsedDays] = useState(null)
   const [usedQa, setUsedQa] = useState(null)
   const [channel, setChannel] = useState('voice')
+
+  const [configMonths, setConfigMonths] = useState([])
+  const [selectedMonth, setSelectedMonth] = useState(config?.month ?? '')
+  const [activeConfig, setActiveConfig] = useState(config)
+
+  useEffect(() => {
+    getConfigMonths().then(setConfigMonths).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (!selectedMonth) return
+    if (selectedMonth === config?.month) { setActiveConfig(config); return }
+    getConfigForMonth(selectedMonth)
+      .then(cfg => { if (cfg) setActiveConfig(cfg) })
+      .catch(() => {})
+  }, [selectedMonth, config])
 
   const W = parseFloat(daysWorked)
   const R = parseFloat(daysRemaining)
@@ -389,8 +408,8 @@ export default function GuideView({ config, guideUser, onGuideLogin, onGuideLogo
     const qaCt  = parseInt(qaCount) || 0
     const qaRem = parseInt(qaRemainingEvals) || 0
 
-    const gcrConfig = channel === 'messaging' ? config.gcrMessaging : config.gcrVoice
-    const effectiveConfig = { ...config, gcr: gcrConfig }
+    const gcrConfig = channel === 'messaging' ? activeConfig.gcrMessaging : activeConfig.gcrVoice
+    const effectiveConfig = { ...activeConfig, gcr: gcrConfig }
     const mis = calculateMIS({ cpd, gcr, qa }, effectiveConfig)
     const g   = computeGuidance(cpd, gcr, qa, qaCt, qaRem, W, R, effectiveConfig)
 
@@ -420,7 +439,17 @@ export default function GuideView({ config, guideUser, onGuideLogin, onGuideLogo
 
       {activeTab === 'calculator' && (
         <>
-          <p className="subtext">Month: <strong>{config?.month}</strong></p>
+          <div className="calc-month-select">
+            <span className="subtext">Month</span>
+            <select value={selectedMonth} onChange={e => { setSelectedMonth(e.target.value); clearResult() }}>
+              {configMonths.length === 0 && config?.month && (
+                <option value={config.month}>{fmtMonthCalc(config.month)}</option>
+              )}
+              {configMonths.map(m => (
+                <option key={m} value={m}>{fmtMonthCalc(m)}</option>
+              ))}
+            </select>
+          </div>
 
           <form onSubmit={handleCalculate} className="input-form">
 
@@ -479,8 +508,8 @@ export default function GuideView({ config, guideUser, onGuideLogin, onGuideLogo
                 />
                 <span className="target-hint">
                   Target: {cpdMode === 'total' && W > 0
-                    ? `${(config.cpd.target * W).toFixed(0)} contacts by now`
-                    : `${config.cpd.target}/day`}
+                    ? `${(activeConfig?.cpd.target * W).toFixed(0)} contacts by now`
+                    : `${activeConfig?.cpd.target}/day`}
                 </span>
                 {computedCPD && <span className="computed-hint">= {computedCPD} contacts/day</span>}
               </label>
@@ -500,10 +529,10 @@ export default function GuideView({ config, guideUser, onGuideLogin, onGuideLogo
                 />
                 <span className="target-hint">
                   {(() => {
-                    const gcrCfg = channel === 'messaging' ? config.gcrMessaging : config.gcrVoice
+                    const gcrCfg = channel === 'messaging' ? activeConfig?.gcrMessaging : activeConfig?.gcrVoice
                     return gcrMode === 'total' && W > 0
                       ? `Target: $${(gcrCfg.target * W).toFixed(0)} by now`
-                      : `Target: $${gcrCfg.target}/day`
+                      : `Target: $${gcrCfg?.target}/day`
                   })()}
                 </span>
                 {computedGCR && <span className="computed-hint">= ${computedGCR}/day</span>}
@@ -518,7 +547,7 @@ export default function GuideView({ config, guideUser, onGuideLogin, onGuideLogo
                   type="number" name="qa" value={fields.qa} onChange={handleChange}
                   placeholder="Current QA avg" step="0.01" min="0" max="100" required
                 />
-                <span className="target-hint">Target: {config.qa.target}%</span>
+                <span className="target-hint">Target: {activeConfig?.qa.target}%</span>
               </label>
               <label className="field-narrow">
                 <div className="field-header"><span>Evals Received</span></div>
@@ -599,7 +628,7 @@ export default function GuideView({ config, guideUser, onGuideLogin, onGuideLogo
                           qaCount={usedQa.count}
                           qaRemaining={usedQa.remaining}
                           needed={guidance.toTarget.qaAvg}
-                          qaTarget={config.qa.target}
+                          qaTarget={activeConfig?.qa.target}
                         />
                       </div>
                     </div>
@@ -638,7 +667,7 @@ export default function GuideView({ config, guideUser, onGuideLogin, onGuideLogo
                         qaCount={usedQa.count}
                         qaRemaining={usedQa.remaining}
                         needed={guidance.maximize.qaAvg}
-                        qaTarget={config.qa.target}
+                        qaTarget={activeConfig?.qa.target}
                       />
                     </div>
                   </div>
