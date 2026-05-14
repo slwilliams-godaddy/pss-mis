@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { calculateMIS } from '../utils/misCalculator'
 import {
-  getTeam, saveTeam, closeMonth,
+  getTeam, saveTeam, deleteGuideRow, closeMonth,
   getArchivedMonths, getArchivedMonth, upsertArchivedMonth,
-  saveConfig, exportBackup, importBackup, clearAllData, generateSampleData,
-  getSupervisorUsernames, addSupervisorUser, removeSupervisorUser, changeSupervisorPassword,
+  saveConfig,
+  getSupervisors, addSupervisor, removeSupervisor, changePassword,
 } from '../utils/storage'
 
-const EMPTY_GUIDE = { name: '', channel: 'voice', cpdMode: 'perday', cpd: '', gcrMode: 'perday', gcr: '', qa: '', days: '' }
+const EMPTY_GUIDE = { name: '', email: '', channel: 'voice', cpdMode: 'perday', cpd: '', gcrMode: 'perday', gcr: '', qa: '', days: '' }
 const CONFIG_METRICS = [
   { key: 'cpd',          label: 'CPD',            prefix: '',  suffix: ''  },
   { key: 'gcrVoice',     label: 'GCR (Voice)',     prefix: '$', suffix: ''  },
@@ -73,28 +73,23 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
   const [trendGuide, setTrendGuide] = useState('')
   const [allArchiveData, setAllArchiveData] = useState(null)
 
-  const [backupMsg, setBackupMsg] = useState('')
-  const [confirmClear, setConfirmClear] = useState(false)
-  const [confirmGenerate, setConfirmGenerate] = useState(false)
-  const restoreInputRef = useRef(null)
-
   const [showSettings, setShowSettings] = useState(false)
-  const [supervisorUsers, setSupervisorUsers] = useState(() => getSupervisorUsernames())
+  const [supervisorEmails, setSupervisorEmails] = useState([])
+  const [supervisorsLoading, setSupervisorsLoading] = useState(false)
 
   const [pwCurrent, setPwCurrent] = useState('')
   const [pwNew, setPwNew] = useState('')
   const [pwConfirm, setPwConfirm] = useState('')
   const [pwMsg, setPwMsg] = useState(null)
 
-  const [newUsername, setNewUsername] = useState('')
-  const [newUserPw, setNewUserPw] = useState('')
-  const [addUserMsg, setAddUserMsg] = useState(null)
+  const [newSupervisorEmail, setNewSupervisorEmail] = useState('')
+  const [addSupervisorMsg, setAddSupervisorMsg] = useState(null)
 
-  const handleChangePassword = (e) => {
+  const handleChangePassword = async (e) => {
     e.preventDefault()
     if (pwNew !== pwConfirm) { setPwMsg({ ok: false, text: 'New passwords do not match.' }); return }
     try {
-      changeSupervisorPassword(currentUser, pwCurrent, pwNew)
+      await changePassword(pwCurrent, pwNew)
       setPwCurrent(''); setPwNew(''); setPwConfirm('')
       setPwMsg({ ok: true, text: 'Password updated.' })
       setTimeout(() => setPwMsg(null), 3000)
@@ -103,69 +98,43 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     }
   }
 
-  const handleAddUser = (e) => {
+  const handleAddSupervisor = async (e) => {
     e.preventDefault()
     try {
-      addSupervisorUser(newUsername.trim(), newUserPw)
-      setSupervisorUsers(getSupervisorUsernames())
-      setNewUsername(''); setNewUserPw('')
-      setAddUserMsg({ ok: true, text: `${newUsername.trim()} added.` })
-      setTimeout(() => setAddUserMsg(null), 3000)
+      await addSupervisor(newSupervisorEmail.trim())
+      const emails = await getSupervisors()
+      setSupervisorEmails(emails)
+      setNewSupervisorEmail('')
+      setAddSupervisorMsg({ ok: true, text: `${newSupervisorEmail.trim()} added.` })
+      setTimeout(() => setAddSupervisorMsg(null), 3000)
     } catch (err) {
-      setAddUserMsg({ ok: false, text: err.message })
+      setAddSupervisorMsg({ ok: false, text: err.message })
     }
   }
 
-  const handleRemoveUser = (username) => {
+  const handleRemoveSupervisor = async (email) => {
     try {
-      removeSupervisorUser(username)
-      setSupervisorUsers(getSupervisorUsernames())
+      await removeSupervisor(email)
+      const emails = await getSupervisors()
+      setSupervisorEmails(emails)
     } catch (err) {
-      setAddUserMsg({ ok: false, text: err.message })
+      setAddSupervisorMsg({ ok: false, text: err.message })
     }
   }
 
-  const handleExportBackup = () => {
-    const json = exportBackup()
-    const blob = new Blob([json], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    const date = new Date().toISOString().slice(0, 10)
-    a.download = `pss-mis-backup-${date}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-    setBackupMsg('Backup downloaded.')
-    setTimeout(() => setBackupMsg(''), 3000)
-  }
-
-  const handleRestoreBackup = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      try {
-        const exportedAt = importBackup(ev.target.result)
-        setBackupMsg(`Restored from backup (${new Date(exportedAt).toLocaleString()}). Reloading…`)
-        setTimeout(() => window.location.reload(), 1200)
-      } catch (err) {
-        setBackupMsg(`Restore failed: ${err.message}`)
-      }
-    }
-    reader.readAsText(file)
-    e.target.value = ''
-  }
-
-  const handleGenerateSampleData = () => {
-    generateSampleData(config)
-    setConfirmGenerate(false)
-    setAllArchiveData(null)
-    fetchArchivedMonths()
+  const openSettings = async () => {
+    setShowSettings(true)
+    setPwMsg(null)
+    setSupervisorsLoading(true)
+    try {
+      const emails = await getSupervisors()
+      setSupervisorEmails(emails)
+    } catch { /* non-critical */ }
+    setSupervisorsLoading(false)
   }
 
   const isCurrentMonth = inputMonth === config.month
 
-  // All months to show in selector: archived (past) + current + next 3 future, newest first
   const allInputMonths = (() => {
     const set = new Set(archivedMonths || [])
     set.add(config.month)
@@ -190,29 +159,36 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
   const scoreColor = (score) => score > 0 ? '#22c55e' : score === 0 ? '#f59e0b' : '#ef4444'
   const fmtSigned = (v) => { const n = parseFloat(Number(v).toFixed(2)); return (n > 0 ? '+' : '') + n }
 
-  // Load archive list
-  const fetchArchivedMonths = () => {
-    setArchivedMonths(getArchivedMonths())
+  const fetchArchivedMonths = async () => {
+    try {
+      const months = await getArchivedMonths()
+      setArchivedMonths(months)
+    } catch {
+      setArchivedMonths([])
+    }
   }
 
   useEffect(() => { fetchArchivedMonths() }, [])
 
-  // Invalidate trend cache when archive list changes
   useEffect(() => { setAllArchiveData(null) }, [archivedMonths])
 
-  // Load trend data when trend tab opens
   useEffect(() => {
     if ((tab !== 'trend' && tab !== 'team-trend') || allArchiveData !== null || !archivedMonths?.length) return
-    const map = {}
-    archivedMonths.forEach(m => {
-      const data = getArchivedMonth(m)
-      if (data) map[m] = data
-    })
-    setAllArchiveData(map)
+    let cancelled = false
+    ;(async () => {
+      const map = {}
+      for (const m of archivedMonths) {
+        try {
+          const data = await getArchivedMonth(m)
+          if (data) map[m] = data
+        } catch { /* skip */ }
+      }
+      if (!cancelled) setAllArchiveData(map)
+    })()
+    return () => { cancelled = true }
   }, [tab, archivedMonths])
 
-  // Load data for the selected input month
-  const loadInputMonth = (month) => {
+  const loadInputMonth = async (month) => {
     setInputLoading(true)
     inputLoaded.current = false
     setInputResults(null)
@@ -223,33 +199,38 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     setEditingInputConfig(false)
     setShowRosterPicker(false)
 
-    if (month === config.month) {
-      const data = getTeam()
-      if (data.guides?.length > 0 && data.guides.some(g => g.name)) {
-        setInputGuides(data.guides)
+    try {
+      if (month === config.month) {
+        const data = await getTeam(month)
+        if (data.guides?.length > 0 && data.guides.some(g => g.name)) {
+          setInputGuides(data.guides)
+        } else {
+          setInputGuides([{ ...EMPTY_GUIDE }])
+          setShowRosterPicker(true)
+        }
+        setInputConfig({ ...config })
+        setInputConfigDraft({ ...config })
+      } else if ((archivedMonths || []).includes(month)) {
+        const data = await getArchivedMonth(month)
+        if (data) {
+          setInputGuides(data.guides?.length ? data.guides : [{ ...EMPTY_GUIDE }])
+          setInputConfig(data.config ? { ...data.config } : { ...config })
+          setInputConfigDraft(data.config ? { ...data.config } : { ...config })
+          setInputResults(data.results?.length ? data.results : null)
+        } else {
+          setInputGuides([{ ...EMPTY_GUIDE }])
+        }
       } else {
-        setInputGuides([{ ...EMPTY_GUIDE }])
-        setShowRosterPicker(true)
+        // Future month: pre-fill names from current month, empty actuals
+        const data = await getTeam(config.month)
+        const guides = data.guides?.filter(g => g.name).map(g => ({ ...EMPTY_GUIDE, name: g.name, email: g.email, channel: g.channel || 'voice' }))
+        setInputGuides(guides?.length ? guides : [{ ...EMPTY_GUIDE }])
+        setInputConfig({ ...config, month })
+        setInputConfigDraft({ ...config, month })
       }
-      setInputConfig({ ...config })
-      setInputConfigDraft({ ...config })
-    } else if (archivedMonths?.includes(month)) {
-      const data = getArchivedMonth(month)
-      if (data) {
-        setInputGuides(data.guides?.length ? data.guides : [{ ...EMPTY_GUIDE }])
-        setInputConfig(data.config ? { ...data.config } : { ...config })
-        setInputConfigDraft(data.config ? { ...data.config } : { ...config })
-        setInputResults(data.results?.length ? data.results : null)
-      } else {
-        setInputGuides([{ ...EMPTY_GUIDE }])
-      }
-    } else {
-      // Future month: pre-fill names from current month, empty actuals
-      const data = getTeam()
-      const guides = data.guides?.filter(g => g.name).map(g => ({ ...EMPTY_GUIDE, name: g.name, channel: g.channel || 'voice' }))
-      setInputGuides(guides?.length ? guides : [{ ...EMPTY_GUIDE }])
-      setInputConfig({ ...config, month })
-      setInputConfigDraft({ ...config, month })
+    } catch (err) {
+      console.error('Error loading month:', err)
+      setInputGuides([{ ...EMPTY_GUIDE }])
     }
 
     setInputLoading(false)
@@ -258,13 +239,13 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
 
   useEffect(() => { loadInputMonth(inputMonth) }, [inputMonth])
 
-  // Auto-save for current month guide changes
+  // Debounced auto-save for current month
   useEffect(() => {
     if (!inputLoaded.current || !isCurrentMonth) return
     setInputSaveStatus('saving')
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       try {
-        saveTeam(config.month, inputGuides)
+        await saveTeam(config.month, inputGuides)
         setInputSaveStatus('saved')
       } catch {
         setInputSaveStatus('error')
@@ -290,78 +271,94 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     setInputResults(calcResults(inputGuides, inputConfig))
   }
 
-  const handleSaveMonth = () => {
+  const handleSaveMonth = async () => {
     setSaveMonthMsg('')
     const results = calcResults(inputGuides, inputConfig)
     try {
-      const updated = upsertArchivedMonth(inputMonth, { guides: inputGuides, results, config: inputConfig })
+      const updated = await upsertArchivedMonth(inputMonth, { guides: inputGuides, config: inputConfig })
       setInputResults(updated.results || null)
       setSaveMonthMsg('Saved.')
       setEditingGuides(false)
       setAllArchiveData(null)
       fetchArchivedMonths()
-    } catch { setSaveMonthMsg('Error saving.') }
+    } catch (err) { setSaveMonthMsg(`Error: ${err.message}`) }
   }
 
-  const handleCloseMonth = () => {
+  const handleCloseMonth = async () => {
     setCloseMonthMsg('')
-    const results = calcResults(inputGuides, inputConfig)
     try {
-      const { current } = closeMonth(results, inputConfig)
+      // Save current state first, then close
+      await saveTeam(config.month, inputGuides)
+      await closeMonth(config.month)
       inputLoaded.current = false
-      setInputGuides(current.guides)
+      // Reset to empty roster for next month
+      const nextGuides = inputGuides.map(g => ({
+        ...EMPTY_GUIDE, name: g.name, email: g.email, channel: g.channel || 'voice',
+      }))
+      setInputGuides(nextGuides)
       setInputResults(null)
       setInputSaveStatus(null)
       inputLoaded.current = true
       setCloseMonthMsg(`${config.month} archived.`)
       fetchArchivedMonths()
-    } catch (e) { setCloseMonthMsg(`Error: ${e.message}`) }
+    } catch (err) { setCloseMonthMsg(`Error: ${err.message}`) }
   }
 
-  const handleSaveInputConfig = (e) => {
+  const handleSaveInputConfig = async (e) => {
     e.preventDefault()
     setInputConfigMsg('')
     if (isCurrentMonth) {
       try {
-        const saved = saveConfig(inputConfigDraft)
-        onConfigSave(saved)
-        setInputConfig({ ...saved })
-        setInputConfigDraft({ ...saved })
+        await onConfigSave(inputConfigDraft)
+        setInputConfig({ ...inputConfigDraft })
         setEditingInputConfig(false)
         setInputConfigMsg('Config saved.')
-      } catch { setInputConfigMsg('Error saving config.') }
+      } catch (err) { setInputConfigMsg(`Error: ${err.message}`) }
     } else {
-      const results = calcResults(inputGuides, inputConfigDraft)
       try {
-        const updated = upsertArchivedMonth(inputMonth, { guides: inputGuides, results, config: inputConfigDraft })
+        const updated = await upsertArchivedMonth(inputMonth, { guides: inputGuides, config: inputConfigDraft })
         setInputConfig({ ...updated.config })
         setInputConfigDraft({ ...updated.config })
         setInputResults(updated.results || null)
         setEditingInputConfig(false)
         setInputConfigMsg('Config saved.')
         setAllArchiveData(null)
-      } catch { setInputConfigMsg('Error saving config.') }
+      } catch (err) { setInputConfigMsg(`Error: ${err.message}`) }
     }
   }
 
-  const handleLoadRoster = (month) => {
+  const handleLoadRoster = async (month) => {
     if (!month) return
-    const data = getArchivedMonth(month)
-    if (!data?.guides?.length) return
-    inputLoaded.current = false
-    setInputGuides(data.guides.map(g => ({ ...EMPTY_GUIDE, name: g.name })))
+    try {
+      const data = await getArchivedMonth(month)
+      if (!data?.guides?.length) return
+      inputLoaded.current = false
+      setInputGuides(data.guides.map(g => ({ ...EMPTY_GUIDE, name: g.name, email: g.email || '', channel: g.channel || 'voice' })))
+      setInputResults(null)
+      setShowRosterPicker(false)
+      inputLoaded.current = true
+    } catch { /* ignore */ }
+  }
+
+  const handleRemoveGuide = async (i) => {
+    if (inputGuides.length === 1) return
+    const guide = inputGuides[i]
+    if (guide.id) {
+      try { await deleteGuideRow(guide.id) } catch { /* best effort */ }
+    }
+    setInputGuides(inputGuides.filter((_, idx) => idx !== i))
     setInputResults(null)
-    setShowRosterPicker(false)
-    inputLoaded.current = true
   }
 
   const exportCSV = () => {
     const results = inputResults
     if (!results) return
-    const header = 'Name,CPD (per day),CPD Points,GCR (per day),GCR Points,QA (%),QA Points,Total MIS,Status'
-    const rows = results.map(r =>
-      r ? `${r.name},${r.actuals.cpd.toFixed(2)},${r.cpd},${r.actuals.gcr.toFixed(2)},${r.gcr},${r.actuals.qa.toFixed(1)}%,${r.qa},${r.total},${r.passing ? 'On Track' : 'Off Track'}` : ''
-    )
+    const header = 'Name,Email,CPD (per day),CPD Points,GCR (per day),GCR Points,QA (%),QA Points,Total MIS,Status'
+    const rows = results.map((r, i) => {
+      if (!r) return ''
+      const email = inputGuides[i]?.email || ''
+      return `${r.name},${email},${r.actuals.cpd.toFixed(2)},${r.cpd},${r.actuals.gcr.toFixed(2)},${r.gcr},${r.actuals.qa.toFixed(1)}%,${r.qa},${r.total},${r.passing ? 'On Track' : 'Off Track'}`
+    })
     const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -409,7 +406,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     <div className="view-container">
       <div className="supervisor-header">
         <h2>Supervisor Dashboard</h2>
-        <button className="btn-gear" title="Settings" onClick={() => { setShowSettings(true); setPwMsg(null) }}>⚙</button>
+        <button className="btn-gear" title="Settings" onClick={openSettings}>⚙</button>
       </div>
 
       {showSettings && (
@@ -442,31 +439,41 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
 
             <div className="settings-divider" />
 
-            <h4>Supervisor Users</h4>
-            <ul className="user-list">
-              {supervisorUsers.map(u => (
-                <li key={u} className="user-list-item">
-                  <span>{u}{u === currentUser && <span className="user-you"> (you)</span>}</span>
-                  {u !== currentUser && (
-                    <button className="btn-ghost user-remove-btn" onClick={() => handleRemoveUser(u)}>Remove</button>
-                  )}
-                </li>
-              ))}
-            </ul>
-            <form onSubmit={handleAddUser} className="password-form">
+            <h4>Supervisor Access</h4>
+            {supervisorsLoading ? (
+              <p className="subtext">Loading…</p>
+            ) : (
+              <ul className="user-list">
+                {supervisorEmails.map(email => (
+                  <li key={email} className="user-list-item">
+                    <span>{email}{email === currentUser && <span className="user-you"> (you)</span>}</span>
+                    {email !== currentUser && (
+                      <button className="btn-ghost user-remove-btn" onClick={() => handleRemoveSupervisor(email)}>Remove</button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <form onSubmit={handleAddSupervisor} className="password-form">
               <label className="password-field">
-                <span>Username</span>
-                <input type="text" value={newUsername} onChange={e => setNewUsername(e.target.value)} required autoComplete="off" />
-              </label>
-              <label className="password-field">
-                <span>Password</span>
-                <input type="password" value={newUserPw} onChange={e => setNewUserPw(e.target.value)} required autoComplete="new-password" />
+                <span>Email address</span>
+                <input
+                  type="email"
+                  value={newSupervisorEmail}
+                  onChange={e => setNewSupervisorEmail(e.target.value)}
+                  required
+                  autoComplete="off"
+                  placeholder="supervisor@example.com"
+                />
               </label>
               <div className="password-actions">
-                <button type="submit" className="btn-secondary">Add User</button>
-                {addUserMsg && <span className={addUserMsg.ok ? 'close-month-msg' : 'close-month-msg error-msg'}>{addUserMsg.text}</span>}
+                <button type="submit" className="btn-secondary">Grant Access</button>
+                {addSupervisorMsg && <span className={addSupervisorMsg.ok ? 'close-month-msg' : 'close-month-msg error-msg'}>{addSupervisorMsg.text}</span>}
               </div>
             </form>
+            <p className="subtext" style={{ marginTop: '0.5rem' }}>
+              Adding an email grants supervisor access. The person must set up their own password via Supabase.
+            </p>
           </div>
         </div>
       )}
@@ -486,24 +493,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
       {/* ── INPUT TAB ── */}
       {tab === 'input' && (
         <div className="history-tab">
-          {/* Sample data generator */}
-          <div className="sample-data-bar">
-            {!confirmGenerate ? (
-              <button className="btn-ghost" onClick={() => {
-                if (archivedMonths?.length) setConfirmGenerate(true)
-                else handleGenerateSampleData()
-              }}>
-                Generate YTD Sample Data
-              </button>
-            ) : (
-              <span className="clear-confirm">
-                <span>This will overwrite existing history. Continue?</span>
-                <button className="btn-secondary" onClick={handleGenerateSampleData}>Yes, generate</button>
-                <button className="btn-ghost" onClick={() => setConfirmGenerate(false)}>Cancel</button>
-              </span>
-            )}
-          </div>
-
           {/* Month selector */}
           <div className="history-controls">
             <label className="history-month-select">
@@ -700,7 +689,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                   )}
                 </div>
 
-                {/* Editable guide table — shown for current month always, or for past/future when editingGuides */}
                 {(isCurrentMonth || isFuture || editingGuides) ? (
                   <>
                     <div className="bulk-table-wrap">
@@ -708,6 +696,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                         <thead>
                           <tr>
                             <th>Guide Name</th>
+                            <th>Email</th>
                             <th>Channel</th>
                             <th>CPD <span className="th-hint">target: {inputConfig.cpd?.target}/day</span></th>
                             <th>GCR <span className="th-hint th-hint-stack"><span>Voice: ${inputConfig.gcrVoice?.target}/day</span><span>Msg: ${inputConfig.gcrMessaging?.target}/day</span></span></th>
@@ -727,6 +716,12 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                                   <div className="cell-col">
                                     <div className="cell-header" />
                                     <input value={g.name} onChange={e => handleGuideChange(i, 'name', e.target.value)} placeholder="Name" />
+                                  </div>
+                                </td>
+                                <td>
+                                  <div className="cell-col">
+                                    <div className="cell-header" />
+                                    <input type="email" value={g.email || ''} onChange={e => handleGuideChange(i, 'email', e.target.value)} placeholder="email@example.com" required />
                                   </div>
                                 </td>
                                 <td>
@@ -773,11 +768,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                                 <td>
                                   <div className="cell-col">
                                     <div className="cell-header" />
-                                    <button type="button" className="btn-remove" onClick={() => {
-                                      if (inputGuides.length === 1) return
-                                      setInputGuides(inputGuides.filter((_, idx) => idx !== i))
-                                      setInputResults(null)
-                                    }}>✕</button>
+                                    <button type="button" className="btn-remove" onClick={() => handleRemoveGuide(i)}>✕</button>
                                   </div>
                                 </td>
                               </tr>
@@ -808,7 +799,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                     </div>
                   </>
                 ) : (
-                  /* Read-only results for past month */
                   <>
                     <div style={{ marginBottom: '0.75rem' }}>
                       <button className="btn-secondary" onClick={() => { setEditingGuides(true); setInputResults(null) }}>Edit Month</button>
@@ -838,7 +828,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                   </>
                 )}
 
-                {/* Results table shown after Calculate for current month */}
                 {isCurrentMonth && inputResults && (
                   <div style={{ marginTop: '1.5rem' }}>
                     <table className="score-table">
@@ -863,33 +852,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
               </div>
             </>
           )}
-          {/* Backup / Restore */}
-          <div className="history-section backup-section">
-            <h4>Data Backup</h4>
-            <div className="backup-actions">
-              <button className="btn-secondary" onClick={handleExportBackup}>Download Backup</button>
-              <button className="btn-secondary" onClick={() => restoreInputRef.current?.click()}>Restore from Backup</button>
-              <input
-                ref={restoreInputRef}
-                type="file"
-                accept=".json"
-                style={{ display: 'none' }}
-                onChange={handleRestoreBackup}
-              />
-              {!confirmClear ? (
-                <button className="btn-danger" onClick={() => setConfirmClear(true)}>Clear All Data</button>
-              ) : (
-                <span className="clear-confirm">
-                  <span>This will erase everything. Are you sure?</span>
-                  <button className="btn-danger" onClick={() => { clearAllData(); window.location.reload() }}>Yes, clear</button>
-                  <button className="btn-ghost" onClick={() => setConfirmClear(false)}>Cancel</button>
-                </span>
-              )}
-              {backupMsg && <span className="close-month-msg">{backupMsg}</span>}
-            </div>
-            <p className="subtext">Backup saves all config, team data, and archive history to a local file.</p>
-          </div>
-
         </div>
       )}
 

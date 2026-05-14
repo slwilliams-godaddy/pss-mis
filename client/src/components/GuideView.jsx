@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { calculateMIS, SCORE_RAILS } from '../utils/misCalculator'
 import ScoreGauge from './ScoreGauge'
 import MetricRow from './MetricRow'
+import { sendOtp, verifyOtp, getMyPublishedScores } from '../utils/storage'
+import { supabase } from '../utils/supabase'
 
 // ── Math helpers ────────────────────────────────────────────────────────────
 
@@ -97,9 +99,164 @@ function QaGuidanceRow({ currentAvg, qaCount, qaRemaining, needed, qaTarget }) {
   )
 }
 
+// ── Score lookup panel ────────────────────────────────────────────────────────
+
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
+const fmtMonth = (m) => { const [y, mm] = m.split('-'); return `${MONTH_NAMES[+mm - 1]} ${y}` }
+const fmtSigned = (v) => { const n = parseFloat(Number(v).toFixed(2)); return (n > 0 ? '+' : '') + n }
+const scoreColor = (s) => s > 0 ? '#22c55e' : s === 0 ? '#f59e0b' : '#ef4444'
+
+function ScoreLookup() {
+  const [step, setStep] = useState('email') // 'email' | 'code' | 'scores'
+  const [email, setEmail] = useState('')
+  const [code, setCode] = useState('')
+  const [scores, setScores] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSendOtp = async (e) => {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    try {
+      await sendOtp(email.trim())
+      setStep('code')
+    } catch (err) {
+      setError(err.message || 'Failed to send code. Check the email address and try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleVerifyCode = async (e) => {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    try {
+      await verifyOtp(email.trim(), code.trim())
+      const data = await getMyPublishedScores()
+      setScores(data)
+      setStep('scores')
+    } catch (err) {
+      setError(err.message || 'Invalid or expired code. Try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    setStep('email')
+    setEmail('')
+    setCode('')
+    setScores(null)
+    setError('')
+  }
+
+  if (step === 'email') {
+    return (
+      <div className="score-lookup-panel">
+        <p className="subtext">Enter your work email to receive a one-time code and view your published scores.</p>
+        <form onSubmit={handleSendOtp} className="input-form">
+          <label>
+            <div className="field-header"><span>Work Email</span></div>
+            <input
+              type="email"
+              value={email}
+              onChange={e => { setEmail(e.target.value); setError('') }}
+              placeholder="you@example.com"
+              required
+              autoFocus
+              disabled={loading}
+            />
+          </label>
+          {error && <p className="gate-error">{error}</p>}
+          <button type="submit" className="btn-primary" disabled={loading}>
+            {loading ? 'Sending…' : 'Send Code'}
+          </button>
+        </form>
+      </div>
+    )
+  }
+
+  if (step === 'code') {
+    return (
+      <div className="score-lookup-panel">
+        <p className="subtext">A 6-digit code was sent to <strong>{email}</strong>. Enter it below.</p>
+        <form onSubmit={handleVerifyCode} className="input-form">
+          <label>
+            <div className="field-header"><span>Verification Code</span></div>
+            <input
+              type="text"
+              value={code}
+              onChange={e => { setCode(e.target.value); setError('') }}
+              placeholder="123456"
+              maxLength={6}
+              required
+              autoFocus
+              disabled={loading}
+              inputMode="numeric"
+            />
+          </label>
+          {error && <p className="gate-error">{error}</p>}
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <button type="submit" className="btn-primary" disabled={loading}>
+              {loading ? 'Verifying…' : 'View My Scores'}
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => { setStep('email'); setError('') }} disabled={loading}>
+              Back
+            </button>
+          </div>
+        </form>
+      </div>
+    )
+  }
+
+  // step === 'scores'
+  return (
+    <div className="score-lookup-panel">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <p className="subtext" style={{ margin: 0 }}>Showing published scores for <strong>{email}</strong></p>
+        <button className="btn-ghost" onClick={handleSignOut}>Sign Out</button>
+      </div>
+      {!scores || scores.length === 0 ? (
+        <p className="subtext">No published scores found for your email yet. Check back once your supervisor has published results.</p>
+      ) : (
+        <table className="score-table">
+          <thead>
+            <tr><th>Month</th><th>Channel</th><th>CPD</th><th>GCR</th><th>QA</th><th>Total MIS</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            {scores.map(row => {
+              const cpd = Number(row.cpd)
+              const gcr = Number(row.gcr)
+              const qa  = Number(row.qa)
+              return (
+                <tr key={row.id}>
+                  <td style={{ whiteSpace: 'nowrap' }}>{fmtMonth(row.month)}</td>
+                  <td>{row.channel === 'messaging' ? 'Messaging' : 'Voice'}</td>
+                  <td>{row.cpd != null ? `${cpd.toFixed(2)}/day` : '—'}</td>
+                  <td>{row.gcr != null ? `$${gcr.toFixed(2)}/day` : '—'}</td>
+                  <td>{row.qa != null ? `${qa.toFixed(1)}%` : '—'}</td>
+                  <td>—</td>
+                  <td>—</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
+      <p className="subtext" style={{ marginTop: '0.75rem', fontSize: '0.8rem' }}>
+        Final MIS scores are calculated and shown by your supervisor. Contact them if you have questions about your results.
+      </p>
+    </div>
+  )
+}
+
 // ── Main component ───────────────────────────────────────────────────────────
 
 export default function GuideView({ config }) {
+  const [activeTab, setActiveTab] = useState('calculator')
   const [cpdMode, setCpdMode] = useState('perday')
   const [gcrMode, setGcrMode] = useState('perday')
   const [fields, setFields] = useState({ cpd: '', gcr: '', qa: '' })
@@ -163,233 +320,246 @@ export default function GuideView({ config }) {
 
   return (
     <div className="view-container">
-      <h2>My MIS Calculator</h2>
-      <p className="subtext">Month: <strong>{config.month}</strong></p>
+      <div className="tabs">
+        <button className={`tab-btn ${activeTab === 'calculator' ? 'active' : ''}`} onClick={() => setActiveTab('calculator')}>
+          My Calculator
+        </button>
+        <button className={`tab-btn ${activeTab === 'lookup' ? 'active' : ''}`} onClick={() => setActiveTab('lookup')}>
+          My Published Score
+        </button>
+      </div>
 
-      <form onSubmit={handleCalculate} className="input-form">
+      {activeTab === 'lookup' && <ScoreLookup />}
 
-        {/* Row 0: Channel */}
-        <div className="guide-channel-row">
-          <span className="guide-channel-label">Channel</span>
-          <div className="inline-toggle">
-            <button type="button" className={`toggle-btn ${channel === 'voice' ? 'active' : ''}`} onClick={() => { setChannel('voice'); clearResult() }}>Voice</button>
-            <button type="button" className={`toggle-btn ${channel === 'messaging' ? 'active' : ''}`} onClick={() => { setChannel('messaging'); clearResult() }}>Messaging</button>
-          </div>
-        </div>
-
-        {/* Row 1: Days */}
-        <div className="form-grid">
-          <label className="field-narrow">
-            <div className="field-header"><span>Days Worked</span></div>
-            <input
-              type="number"
-              value={daysWorked}
-              onChange={e => { setDaysWorked(e.target.value); clearResult() }}
-              placeholder="e.g. 15"
-              min="0" step="0.1" required
-            />
-          </label>
-          <label className="field-narrow">
-            <div className="field-header"><span>Days Remaining</span></div>
-            <input
-              type="number"
-              value={daysRemaining}
-              onChange={e => { setDaysRemaining(e.target.value); clearResult() }}
-              placeholder="e.g. 6"
-              min="0" step="0.1" required
-            />
-          </label>
-          <div className="field-days-total">
-            {W > 0 && R >= 0 && !isNaN(W) && !isNaN(R) && (
-              <span className="subtext">{W + R} total days</span>
-            )}
-          </div>
-        </div>
-
-        {/* Row 2: CPD + GCR */}
-        <div className="form-grid">
-          <label>
-            <div className="field-header spaced">
-              <span>{cpdMode === 'total' ? 'Total Contacts So Far' : 'CPD (Contacts Per Day)'}</span>
-              <div className="inline-toggle">
-                <button type="button" className={`toggle-btn ${cpdMode === 'perday' ? 'active' : ''}`} onClick={() => switchMode('cpd', 'perday')}>Per Day</button>
-                <button type="button" className={`toggle-btn ${cpdMode === 'total' ? 'active' : ''}`} onClick={() => switchMode('cpd', 'total')}>Total So Far</button>
-              </div>
-            </div>
-            <input
-              type="number" name="cpd" value={fields.cpd} onChange={handleChange}
-              placeholder={cpdMode === 'total' ? 'Total contacts so far' : 'Contacts per day'}
-              step="0.01" required
-            />
-            <span className="target-hint">
-              Target: {cpdMode === 'total' && W > 0
-                ? `${(config.cpd.target * W).toFixed(0)} contacts by now`
-                : `${config.cpd.target}/day`}
-            </span>
-            {computedCPD && <span className="computed-hint">= {computedCPD} contacts/day</span>}
-          </label>
-
-          <label>
-            <div className="field-header spaced">
-              <span>{gcrMode === 'total' ? 'Total GCR So Far ($)' : 'GCR (Gross Cash Revenue Per Day)'}</span>
-              <div className="inline-toggle">
-                <button type="button" className={`toggle-btn ${gcrMode === 'perday' ? 'active' : ''}`} onClick={() => switchMode('gcr', 'perday')}>Per Day</button>
-                <button type="button" className={`toggle-btn ${gcrMode === 'total' ? 'active' : ''}`} onClick={() => switchMode('gcr', 'total')}>Total So Far</button>
-              </div>
-            </div>
-            <input
-              type="number" name="gcr" value={fields.gcr} onChange={handleChange}
-              placeholder={gcrMode === 'total' ? 'Total GCR so far ($)' : 'GCR per day ($)'}
-              step="0.01" required
-            />
-            <span className="target-hint">
-              {(() => {
-                const gcrCfg = channel === 'messaging' ? config.gcrMessaging : config.gcrVoice
-                return gcrMode === 'total' && W > 0
-                  ? `Target: $${(gcrCfg.target * W).toFixed(0)} by now`
-                  : `Target: $${gcrCfg.target}/day`
-              })()}
-            </span>
-            {computedGCR && <span className="computed-hint">= ${computedGCR}/day</span>}
-          </label>
-        </div>
-
-        {/* Row 3: QA */}
-        <div className="qa-fields">
-          <label>
-            <div className="field-header"><span>QA Average</span></div>
-            <input
-              type="number" name="qa" value={fields.qa} onChange={handleChange}
-              placeholder="Current QA avg" step="0.01" min="0" max="100" required
-            />
-            <span className="target-hint">Target: {config.qa.target}%</span>
-          </label>
-          <label className="field-narrow">
-            <div className="field-header"><span>Evals Received</span></div>
-            <input
-              type="number" value={qaCount}
-              onChange={e => { setQaCount(e.target.value); clearResult() }}
-              placeholder="e.g. 3" min="0" step="1"
-            />
-            {parseInt(qaCount) > 0 && parseInt(qaCount) < 4 && (
-              <span className="warn-hint">Min 4 required</span>
-            )}
-          </label>
-          <label className="field-narrow">
-            <div className="field-header"><span>Expected Remaining</span></div>
-            <input
-              type="number" value={qaRemainingEvals}
-              onChange={e => { setQaRemainingEvals(e.target.value); clearResult() }}
-              placeholder="e.g. 1" min="0" step="1"
-            />
-            <span className="target-hint">For guidance</span>
-          </label>
-        </div>
-
-        <button type="submit" className="btn-primary">Calculate My Score</button>
-      </form>
-
-      {result && (
+      {activeTab === 'calculator' && (
         <>
-          <div className="results-card">
-            <div className={`pass-badge ${result.passing ? 'pass' : 'fail'}`}>
-              {result.passing ? 'On Track' : 'Off Track'}
+          <h2>My MIS Calculator</h2>
+          <p className="subtext">Month: <strong>{config?.month}</strong></p>
+
+          <form onSubmit={handleCalculate} className="input-form">
+
+            {/* Row 0: Channel */}
+            <div className="guide-channel-row">
+              <span className="guide-channel-label">Channel</span>
+              <div className="inline-toggle">
+                <button type="button" className={`toggle-btn ${channel === 'voice' ? 'active' : ''}`} onClick={() => { setChannel('voice'); clearResult() }}>Voice</button>
+                <button type="button" className={`toggle-btn ${channel === 'messaging' ? 'active' : ''}`} onClick={() => { setChannel('messaging'); clearResult() }}>Messaging</button>
+              </div>
             </div>
-            <div className="total-score">{result.total > 0 ? `+${result.total}` : result.total}</div>
-            <div className="total-label">Total MIS Score</div>
-            <ScoreGauge score={result.total} />
 
-            <div className="metric-breakdown">
-              <h3>Score Breakdown</h3>
-              <MetricRow label="CPD" score={result.cpd} railMin={SCORE_RAILS.cpd.min} railMax={SCORE_RAILS.cpd.max} />
-              <MetricRow label="GCR" score={result.gcr} railMin={SCORE_RAILS.gcr.min} railMax={SCORE_RAILS.gcr.max} />
-              <MetricRow label="QA"  score={result.qa}  railMin={SCORE_RAILS.qa.min}  railMax={SCORE_RAILS.qa.max}  />
+            {/* Row 1: Days */}
+            <div className="form-grid">
+              <label className="field-narrow">
+                <div className="field-header"><span>Days Worked</span></div>
+                <input
+                  type="number"
+                  value={daysWorked}
+                  onChange={e => { setDaysWorked(e.target.value); clearResult() }}
+                  placeholder="e.g. 15"
+                  min="0" step="0.1" required
+                />
+              </label>
+              <label className="field-narrow">
+                <div className="field-header"><span>Days Remaining</span></div>
+                <input
+                  type="number"
+                  value={daysRemaining}
+                  onChange={e => { setDaysRemaining(e.target.value); clearResult() }}
+                  placeholder="e.g. 6"
+                  min="0" step="0.1" required
+                />
+              </label>
+              <div className="field-days-total">
+                {W > 0 && R >= 0 && !isNaN(W) && !isNaN(R) && (
+                  <span className="subtext">{W + R} total days</span>
+                )}
+              </div>
             </div>
 
-          </div>
-
-          {guidance?.noRemaining ? (
-            <div className="guidance-card">
-              <p className="subtext">No days remaining — your score is final.</p>
-            </div>
-          ) : guidance && (
-            <div className="guidance-card">
-
-              {/* ── To Get On Track (any metric below target) ── */}
-              {(result.cpd < 0 || result.gcr < 0 || result.qa < 0) && (
-                <div className="guidance-section">
-                  <h3 className="guidance-heading guidance-heading-warn">To Get On Track</h3>
-                  <p className="guidance-intro">
-                    With <strong>{usedDays.R}</strong> day{usedDays.R !== 1 ? 's' : ''} remaining,
-                    here's what each metric needs to reach its target:
-                  </p>
-                  <div className="guidance-rows">
-                    <RateGuidanceRow
-                      label="CPD"
-                      current={usedActuals.cpd}
-                      needed={guidance.toTarget.cpd}
-                      daysRemaining={usedDays.R}
-                      ceiling={Infinity}
-                    />
-                    <RateGuidanceRow
-                      label="GCR"
-                      current={usedActuals.gcr}
-                      needed={guidance.toTarget.gcr}
-                      daysRemaining={usedDays.R}
-                      prefix="$"
-                      ceiling={Infinity}
-                    />
-                    <QaGuidanceRow
-                      currentAvg={usedActuals.qa}
-                      qaCount={usedQa.count}
-                      qaRemaining={usedQa.remaining}
-                      needed={guidance.toTarget.qaAvg}
-                      qaTarget={config.qa.target}
-                    />
+            {/* Row 2: CPD + GCR */}
+            <div className="form-grid">
+              <label>
+                <div className="field-header spaced">
+                  <span>{cpdMode === 'total' ? 'Total Contacts So Far' : 'CPD (Contacts Per Day)'}</span>
+                  <div className="inline-toggle">
+                    <button type="button" className={`toggle-btn ${cpdMode === 'perday' ? 'active' : ''}`} onClick={() => switchMode('cpd', 'perday')}>Per Day</button>
+                    <button type="button" className={`toggle-btn ${cpdMode === 'total' ? 'active' : ''}`} onClick={() => switchMode('cpd', 'total')}>Total So Far</button>
                   </div>
                 </div>
-              )}
+                <input
+                  type="number" name="cpd" value={fields.cpd} onChange={handleChange}
+                  placeholder={cpdMode === 'total' ? 'Total contacts so far' : 'Contacts per day'}
+                  step="0.01" required
+                />
+                <span className="target-hint">
+                  Target: {cpdMode === 'total' && W > 0
+                    ? `${(config.cpd.target * W).toFixed(0)} contacts by now`
+                    : `${config.cpd.target}/day`}
+                </span>
+                {computedCPD && <span className="computed-hint">= {computedCPD} contacts/day</span>}
+              </label>
 
-              {/* ── To Maximize ── */}
-              <div className="guidance-section">
-                <h3 className="guidance-heading guidance-heading-good">
-                  {result.passing ? 'To Maximize Your Score' : 'To Reach Your Maximum'}
-                </h3>
-                <p className="guidance-intro">
-                  {result.passing
-                    ? `You're On Track. Here's what each metric needs for the remaining ${usedDays.R} day${usedDays.R !== 1 ? 's' : ''} to hit its ceiling:`
-                    : `If you can push past the target, here's what it takes to cap out each metric:`
-                  }
-                </p>
-                <div className="guidance-rows">
-                  <RateGuidanceRow
-                    label="CPD"
-                    current={usedActuals.cpd}
-                    needed={guidance.maximize.cpd}
-                    daysRemaining={usedDays.R}
-                    ceiling={Infinity}
-                    aspirational
-                  />
-                  <RateGuidanceRow
-                    label="GCR"
-                    current={usedActuals.gcr}
-                    needed={guidance.maximize.gcr}
-                    daysRemaining={usedDays.R}
-                    prefix="$"
-                    ceiling={Infinity}
-                    aspirational
-                  />
-                  <QaGuidanceRow
-                    currentAvg={usedActuals.qa}
-                    qaCount={usedQa.count}
-                    qaRemaining={usedQa.remaining}
-                    needed={guidance.maximize.qaAvg}
-                    qaTarget={config.qa.target}
-                  />
+              <label>
+                <div className="field-header spaced">
+                  <span>{gcrMode === 'total' ? 'Total GCR So Far ($)' : 'GCR (Gross Cash Revenue Per Day)'}</span>
+                  <div className="inline-toggle">
+                    <button type="button" className={`toggle-btn ${gcrMode === 'perday' ? 'active' : ''}`} onClick={() => switchMode('gcr', 'perday')}>Per Day</button>
+                    <button type="button" className={`toggle-btn ${gcrMode === 'total' ? 'active' : ''}`} onClick={() => switchMode('gcr', 'total')}>Total So Far</button>
+                  </div>
                 </div>
+                <input
+                  type="number" name="gcr" value={fields.gcr} onChange={handleChange}
+                  placeholder={gcrMode === 'total' ? 'Total GCR so far ($)' : 'GCR per day ($)'}
+                  step="0.01" required
+                />
+                <span className="target-hint">
+                  {(() => {
+                    const gcrCfg = channel === 'messaging' ? config.gcrMessaging : config.gcrVoice
+                    return gcrMode === 'total' && W > 0
+                      ? `Target: $${(gcrCfg.target * W).toFixed(0)} by now`
+                      : `Target: $${gcrCfg.target}/day`
+                  })()}
+                </span>
+                {computedGCR && <span className="computed-hint">= ${computedGCR}/day</span>}
+              </label>
+            </div>
+
+            {/* Row 3: QA */}
+            <div className="qa-fields">
+              <label>
+                <div className="field-header"><span>QA Average</span></div>
+                <input
+                  type="number" name="qa" value={fields.qa} onChange={handleChange}
+                  placeholder="Current QA avg" step="0.01" min="0" max="100" required
+                />
+                <span className="target-hint">Target: {config.qa.target}%</span>
+              </label>
+              <label className="field-narrow">
+                <div className="field-header"><span>Evals Received</span></div>
+                <input
+                  type="number" value={qaCount}
+                  onChange={e => { setQaCount(e.target.value); clearResult() }}
+                  placeholder="e.g. 3" min="0" step="1"
+                />
+                {parseInt(qaCount) > 0 && parseInt(qaCount) < 4 && (
+                  <span className="warn-hint">Min 4 required</span>
+                )}
+              </label>
+              <label className="field-narrow">
+                <div className="field-header"><span>Expected Remaining</span></div>
+                <input
+                  type="number" value={qaRemainingEvals}
+                  onChange={e => { setQaRemainingEvals(e.target.value); clearResult() }}
+                  placeholder="e.g. 1" min="0" step="1"
+                />
+                <span className="target-hint">For guidance</span>
+              </label>
+            </div>
+
+            <button type="submit" className="btn-primary">Calculate My Score</button>
+          </form>
+
+          {result && (
+            <>
+              <div className="results-card">
+                <div className={`pass-badge ${result.passing ? 'pass' : 'fail'}`}>
+                  {result.passing ? 'On Track' : 'Off Track'}
+                </div>
+                <div className="total-score">{result.total > 0 ? `+${result.total}` : result.total}</div>
+                <div className="total-label">Total MIS Score</div>
+                <ScoreGauge score={result.total} />
+
+                <div className="metric-breakdown">
+                  <h3>Score Breakdown</h3>
+                  <MetricRow label="CPD" score={result.cpd} railMin={SCORE_RAILS.cpd.min} railMax={SCORE_RAILS.cpd.max} />
+                  <MetricRow label="GCR" score={result.gcr} railMin={SCORE_RAILS.gcr.min} railMax={SCORE_RAILS.gcr.max} />
+                  <MetricRow label="QA"  score={result.qa}  railMin={SCORE_RAILS.qa.min}  railMax={SCORE_RAILS.qa.max}  />
+                </div>
+
               </div>
 
-            </div>
+              {guidance?.noRemaining ? (
+                <div className="guidance-card">
+                  <p className="subtext">No days remaining — your score is final.</p>
+                </div>
+              ) : guidance && (
+                <div className="guidance-card">
+
+                  {(result.cpd < 0 || result.gcr < 0 || result.qa < 0) && (
+                    <div className="guidance-section">
+                      <h3 className="guidance-heading guidance-heading-warn">To Get On Track</h3>
+                      <p className="guidance-intro">
+                        With <strong>{usedDays.R}</strong> day{usedDays.R !== 1 ? 's' : ''} remaining,
+                        here's what each metric needs to reach its target:
+                      </p>
+                      <div className="guidance-rows">
+                        <RateGuidanceRow
+                          label="CPD"
+                          current={usedActuals.cpd}
+                          needed={guidance.toTarget.cpd}
+                          daysRemaining={usedDays.R}
+                          ceiling={Infinity}
+                        />
+                        <RateGuidanceRow
+                          label="GCR"
+                          current={usedActuals.gcr}
+                          needed={guidance.toTarget.gcr}
+                          daysRemaining={usedDays.R}
+                          prefix="$"
+                          ceiling={Infinity}
+                        />
+                        <QaGuidanceRow
+                          currentAvg={usedActuals.qa}
+                          qaCount={usedQa.count}
+                          qaRemaining={usedQa.remaining}
+                          needed={guidance.toTarget.qaAvg}
+                          qaTarget={config.qa.target}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="guidance-section">
+                    <h3 className="guidance-heading guidance-heading-good">
+                      {result.passing ? 'To Maximize Your Score' : 'To Reach Your Maximum'}
+                    </h3>
+                    <p className="guidance-intro">
+                      {result.passing
+                        ? `You're On Track. Here's what each metric needs for the remaining ${usedDays.R} day${usedDays.R !== 1 ? 's' : ''} to hit its ceiling:`
+                        : `If you can push past the target, here's what it takes to cap out each metric:`
+                      }
+                    </p>
+                    <div className="guidance-rows">
+                      <RateGuidanceRow
+                        label="CPD"
+                        current={usedActuals.cpd}
+                        needed={guidance.maximize.cpd}
+                        daysRemaining={usedDays.R}
+                        ceiling={Infinity}
+                        aspirational
+                      />
+                      <RateGuidanceRow
+                        label="GCR"
+                        current={usedActuals.gcr}
+                        needed={guidance.maximize.gcr}
+                        daysRemaining={usedDays.R}
+                        prefix="$"
+                        ceiling={Infinity}
+                        aspirational
+                      />
+                      <QaGuidanceRow
+                        currentAvg={usedActuals.qa}
+                        qaCount={usedQa.count}
+                        qaRemaining={usedQa.remaining}
+                        needed={guidance.maximize.qaAvg}
+                        qaTarget={config.qa.target}
+                      />
+                    </div>
+                  </div>
+
+                </div>
+              )}
+            </>
           )}
         </>
       )}

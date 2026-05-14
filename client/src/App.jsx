@@ -1,24 +1,58 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import GuideView from './components/GuideView'
 import SupervisorView from './components/SupervisorView'
 import PasswordGate from './components/PasswordGate'
-import { getConfig, saveConfig } from './utils/storage'
+import { supabase } from './utils/supabase'
+import { getConfig, saveConfig, signOut } from './utils/storage'
 import './App.css'
 
 export default function App() {
   const [role, setRole] = useState(null)
   const [showAbout, setShowAbout] = useState(false)
-  const [supervisorAuthed, setSupervisorAuthed] = useState(false)
-  const [supervisorUser, setSupervisorUser] = useState(null)
-  const [config, setConfig] = useState(() => getConfig())
+  const [supervisorSession, setSupervisorSession] = useState(null)
+  const [config, setConfig] = useState(null)
+  const [configLoading, setConfigLoading] = useState(true)
+
+  // Restore supervisor session on mount and listen for auth changes
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) setSupervisorSession(session)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSupervisorSession(session)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  // Load config from Supabase (accessible anonymously)
+  useEffect(() => {
+    getConfig()
+      .then(cfg => { setConfig(cfg); setConfigLoading(false) })
+      .catch(() => setConfigLoading(false))
+  }, [])
+
+  const handleConfigSave = async (cfg) => {
+    await saveConfig(cfg)
+    setConfig(cfg)
+  }
+
+  const handleLogOut = async () => {
+    await signOut()
+    setSupervisorSession(null)
+    setRole(null)
+  }
 
   const handleSwitchRole = () => {
     setRole(null)
   }
 
-  const handleConfigSave = (cfg) => {
-    saveConfig(cfg)
-    setConfig(cfg)
+  if (configLoading) {
+    return (
+      <div className="role-select-screen">
+        <h1>PSS Merchant Impact Score</h1>
+        <p className="subtext">Loading…</p>
+      </div>
+    )
   }
 
   if (!role) {
@@ -315,10 +349,10 @@ export default function App() {
     )
   }
 
-  if (role === 'supervisor' && !supervisorAuthed) {
+  if (role === 'supervisor' && !supervisorSession) {
     return (
       <PasswordGate
-        onSuccess={(username) => { setSupervisorAuthed(true); setSupervisorUser(username) }}
+        onSuccess={(session) => setSupervisorSession(session)}
       />
     )
   }
@@ -330,14 +364,18 @@ export default function App() {
         <div className="header-actions">
           <button className="btn-ghost" onClick={handleSwitchRole}>Switch Role</button>
           {role === 'supervisor' && (
-            <button className="btn-ghost" onClick={() => { setSupervisorAuthed(false); setSupervisorUser(null); setRole(null) }}>Log Out</button>
+            <button className="btn-ghost" onClick={handleLogOut}>Log Out</button>
           )}
         </div>
       </header>
       <main>
         {role === 'guide'
           ? <GuideView config={config} />
-          : <SupervisorView config={config} onConfigSave={handleConfigSave} currentUser={supervisorUser} />
+          : <SupervisorView
+              config={config}
+              onConfigSave={handleConfigSave}
+              currentUser={supervisorSession?.user?.email}
+            />
         }
       </main>
     </div>

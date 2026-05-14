@@ -1,19 +1,23 @@
 import { useState } from 'react'
-import { checkUser, getSupervisorUsernames } from '../utils/storage'
+import { signIn } from '../utils/storage'
 
 export default function PasswordGate({ onSuccess }) {
-  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-  const usernames = getSupervisorUsernames()
+  const [loading, setLoading] = useState(false)
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
-    if (checkUser(username, password)) {
-      onSuccess(username)
-    } else {
-      setError('Incorrect username or password.')
+    setLoading(true)
+    try {
+      const session = await signIn(email.trim(), password)
+      onSuccess(session)
+    } catch (err) {
+      setError(err.message || 'Incorrect email or password.')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -22,24 +26,29 @@ export default function PasswordGate({ onSuccess }) {
       <div className="password-card">
         <h2>Supervisor Access</h2>
         <form onSubmit={handleSubmit}>
-          <select
-            value={username}
-            onChange={e => { setUsername(e.target.value); setError('') }}
+          <input
+            type="email"
+            value={email}
+            onChange={e => { setEmail(e.target.value); setError('') }}
+            placeholder="Email address"
             required
             autoFocus
-          >
-            <option value="" disabled>Select user</option>
-            {usernames.map(u => <option key={u} value={u}>{u}</option>)}
-          </select>
+            autoComplete="email"
+            disabled={loading}
+          />
           <input
             type="password"
             value={password}
             onChange={e => { setPassword(e.target.value); setError('') }}
             placeholder="Password"
             required
+            autoComplete="current-password"
+            disabled={loading}
           />
           {error && <p className="gate-error">{error}</p>}
-          <button type="submit" className="btn-primary">Continue</button>
+          <button type="submit" className="btn-primary" disabled={loading}>
+            {loading ? 'Signing in…' : 'Continue'}
+          </button>
         </form>
       </div>
     </div>
