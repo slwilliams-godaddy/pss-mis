@@ -420,7 +420,6 @@ export default function GuideView({ config, guideUser, onGuideLogin, onGuideLogo
 
       {activeTab === 'calculator' && (
         <>
-          <h2>My MIS Calculator</h2>
           <p className="subtext">Month: <strong>{config?.month}</strong></p>
 
           <form onSubmit={handleCalculate} className="input-form">
