@@ -76,23 +76,31 @@ export async function changeSupervisorPassword(username, currentPassword, newPas
 
 export async function checkGuide(guideName, password) {
   const hash = await hashPassword(password)
-  const { data, error } = await supabase
+  const { data: cred, error: credError } = await supabase
     .from('guide_credentials')
     .select('guide_name')
     .eq('guide_name', guideName)
     .eq('password_hash', hash)
     .maybeSingle()
-  if (error) throw new Error(error.message)
-  return data !== null
+  if (credError) throw new Error(credError.message)
+  if (!cred) return false
+  const { data: guide, error: guideError } = await supabase
+    .from('guides')
+    .select('active')
+    .eq('name', guideName)
+    .maybeSingle()
+  if (guideError) throw new Error(guideError.message)
+  return guide?.active === true
 }
 
 export async function getGuideNames() {
   const { data, error } = await supabase
-    .from('guide_credentials')
-    .select('guide_name')
-    .order('guide_name')
+    .from('guides')
+    .select('name')
+    .eq('active', true)
+    .order('name')
   if (error) throw new Error(error.message)
-  return data.map(r => r.guide_name)
+  return data.map(r => r.name)
 }
 
 export async function ensureGuideCredentials(guideNames) {
