@@ -54,7 +54,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
   const [inputMonth, setInputMonth] = useState(config.month)
   const [inputGuides, setInputGuides] = useState([{ ...EMPTY_GUIDE }])
   const [inputConfig, setInputConfig] = useState({ ...config })
-  const [inputResults, setInputResults] = useState(null)
   const [inputSaveStatus, setInputSaveStatus] = useState(null)
   const [inputLoading, setInputLoading] = useState(false)
   const [editingInputConfig, setEditingInputConfig] = useState(false)
@@ -170,6 +169,8 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     return { name: g.name || 'Unknown', channel: g.channel || 'voice', actuals, ...calculateMIS(actuals, { ...cfg, gcr: gcrCfg }) }
   })
 
+  const inputResults = calcResults(inputGuides, inputConfig)
+
   const scoreColor = (score) => score > 0 ? '#22c55e' : score === 0 ? '#f59e0b' : '#ef4444'
   const fmtSigned = (v) => { const n = parseFloat(Number(v).toFixed(2)); return (n > 0 ? '+' : '') + n }
 
@@ -208,7 +209,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
   const loadInputMonth = async (month) => {
     setInputLoading(true)
     userEdited.current = false
-    setInputResults(null)
     setShowResetConfirm(false)
     setInputConfigMsg('')
     setEditingInputConfig(false)
@@ -232,7 +232,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
         setInputConfig({ ...cfg })
         setInputConfigDraft({ ...cfg })
         if (archiveData?.results?.length && namedGuides?.length) {
-          setInputResults(archiveData.results)
         }
       }
     } catch (err) {
@@ -274,7 +273,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
   const handleGuideChange = (i, field, value) => {
     markEdited()
     setInputGuides(inputGuides.map((g, idx) => idx === i ? { ...g, [field]: value } : g))
-    setInputResults(null)
   }
 
   const toggleMetricMode = (i, metric) => {
@@ -282,12 +280,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     setInputGuides(inputGuides.map((g, idx) => idx === i
       ? { ...g, [`${metric}Mode`]: g[`${metric}Mode`] === 'perday' ? 'total' : 'perday', [metric]: '' }
       : g))
-    setInputResults(null)
-  }
-
-  const handleCalculate = (e) => {
-    e && e.preventDefault()
-    setInputResults(calcResults(inputGuides, inputConfig))
   }
 
   const handleResetMonth = async () => {
@@ -314,7 +306,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
       try {
         await saveConfig({ ...inputConfigDraft, month: inputMonth })
         setInputConfig({ ...inputConfigDraft })
-        setInputResults(calcResults(inputGuides, inputConfigDraft))
         setEditingInputConfig(false)
         setInputConfigMsg('Config saved.')
         setAllArchiveData(null)
@@ -331,7 +322,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
       if (!namedGuides.length) return
       markEdited()
       setInputGuides(namedGuides.map(g => ({ ...EMPTY_GUIDE, name: g.name, email: g.email || '', channel: g.channel || 'voice' })))
-      setInputResults(null)
       setShowRosterPicker(false)
     } catch { /* ignore */ }
   }
@@ -341,7 +331,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     const guide = inputGuides[i]
     markEdited()
     setInputGuides(inputGuides.filter((_, idx) => idx !== i))
-    setInputResults(null)
     if (guide.id) deleteGuideRow(guide.id).catch(() => {})
   }
 
@@ -352,7 +341,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
       if (!active.length) return
       markEdited()
       setInputGuides(active.map(g => ({ ...EMPTY_GUIDE, name: g.name, email: g.email || '', channel: g.channel || 'voice' })))
-      setInputResults(null)
       setShowRosterPicker(false)
     } catch { /* ignore */ }
   }
@@ -431,10 +419,9 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
   }
 
   const exportCSV = () => {
-    const results = inputResults
-    if (!results) return
+    if (!inputResults.some(Boolean)) return
     const header = 'Name,CPD (per day),CPD Points,GCR (per day),GCR Points,QA (%),QA Points,Total MIS,Status'
-    const rows = results.map((r) => {
+    const rows = inputResults.map((r) => {
       if (!r) return ''
       return `${r.name},${r.actuals.cpd.toFixed(2)},${r.cpd},${r.actuals.gcr.toFixed(2)},${r.gcr},${r.actuals.qa.toFixed(1)}%,${r.qa},${r.total},${r.passing ? 'On Track' : 'Off Track'}`
     })
@@ -590,7 +577,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                 ))}
               </select>
             </label>
-            {inputResults && (
+            {inputResults.some(Boolean) && (
               <button className="btn-secondary" onClick={exportCSV}>Export CSV</button>
             )}
           </div>
@@ -726,7 +713,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
               )}
 
               {/* Team averages (for months with results) */}
-              {!isCurrentMonth && inputResults && (() => {
+              {!isCurrentMonth && inputResults.some(Boolean) && (() => {
                 const valid = inputResults.filter(Boolean)
                 if (!valid.length) return null
                 const avg = arr => Math.round(arr.reduce((s, v) => s + v, 0) / arr.length * 100) / 100
@@ -861,8 +848,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                   </table>
                 </div>
                 <div className="bulk-actions">
-                  <button type="button" className="btn-secondary" onClick={() => { markEdited(); setInputGuides([...inputGuides, { ...EMPTY_GUIDE }]); setInputResults(null) }}>+ Add Guide</button>
-                  <button type="button" className="btn-primary" onClick={handleCalculate}>Calculate All</button>
                   <div className="bulk-actions-right">
                     {showResetConfirm ? (
                       <span className="reset-confirm-inline">
@@ -876,7 +861,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                   </div>
                 </div>
 
-                {inputResults && (
+                {inputResults.some(Boolean) && (
                   <div style={{ marginTop: '1.5rem' }}>
                     <table className="score-table">
                       <thead>
