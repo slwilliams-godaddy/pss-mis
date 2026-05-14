@@ -65,12 +65,12 @@ export default function App() {
           <button className="role-btn" onClick={() => setRole('guide')}>
             <span className="role-icon">👤</span>
             <span className="role-title">Guide</span>
-            <span className="role-desc">Calculate my MIS score</span>
+            <span className="role-desc">View my MIS history and pacing calculator</span>
           </button>
           <button className="role-btn" onClick={() => setRole('supervisor')}>
             <span className="role-icon">📊</span>
             <span className="role-title">Supervisor</span>
-            <span className="role-desc">View team scores & manage config</span>
+            <span className="role-desc">Input scores and manage team</span>
           </button>
         </div>
 
