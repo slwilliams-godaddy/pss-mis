@@ -515,19 +515,40 @@ input:focus { outline: none; border-color: var(--blue); }
 
 .bulk-actions-right { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; }
 
-.btn-close-month {
+.close-month-msg { font-size: 0.82rem; color: var(--green); }
+
+.reset-confirm-inline { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.reset-confirm-label { font-size: 0.82rem; color: var(--text-muted); }
+.btn-danger-sm {
   background: transparent;
-  border: 1px solid var(--border);
+  border: 1px solid #ef4444;
   border-radius: 6px;
-  color: var(--text-muted);
+  color: #ef4444;
   cursor: pointer;
-  font-size: 0.85rem;
-  padding: 0.5rem 1rem;
+  font-size: 0.82rem;
+  padding: 0.35rem 0.75rem;
   transition: all 0.15s;
 }
-.btn-close-month:hover { border-color: var(--amber); color: var(--amber); }
+.btn-danger-sm:hover { background: #ef444418; }
 
-.close-month-msg { font-size: 0.82rem; color: var(--green); }
+.history-guide-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.5rem;
+}
+.history-guide-name { font-size: 0.9rem; color: var(--text-muted); }
+.history-guide-actions { display: flex; align-items: center; gap: 0.5rem; }
+
+.guide-settings-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 0.5rem;
+}
 
 .history-tab { display: flex; flex-direction: column; gap: 1.25rem; }
 

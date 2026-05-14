@@ -9,7 +9,7 @@ async function hashPassword(password) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
-// ── Auth ─────────────────────────────────────────────────────────────────────
+// ── Supervisor auth ───────────────────────────────────────────────────────────
 
 export async function checkUser(username, password) {
   const hash = await hashPassword(password)
@@ -69,6 +69,59 @@ export async function changeSupervisorPassword(username, currentPassword, newPas
     .from('supervisor_credentials')
     .update({ password_hash: newHash })
     .eq('username', username)
+  if (updateError) throw new Error(updateError.message)
+}
+
+// ── Guide auth ────────────────────────────────────────────────────────────────
+
+export async function checkGuide(guideName, password) {
+  const hash = await hashPassword(password)
+  const { data, error } = await supabase
+    .from('guide_credentials')
+    .select('guide_name')
+    .eq('guide_name', guideName)
+    .eq('password_hash', hash)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return data !== null
+}
+
+export async function getGuideNames() {
+  const { data, error } = await supabase
+    .from('guide_credentials')
+    .select('guide_name')
+    .order('guide_name')
+  if (error) throw new Error(error.message)
+  return data.map(r => r.guide_name)
+}
+
+export async function ensureGuideCredentials(guideNames) {
+  const names = guideNames.filter(n => n && n.trim())
+  if (!names.length) return
+  const hash = await hashPassword('changeme')
+  const rows = names.map(n => ({ guide_name: n.trim(), password_hash: hash }))
+  const { error } = await supabase
+    .from('guide_credentials')
+    .upsert(rows, { onConflict: 'guide_name', ignoreDuplicates: true })
+  if (error) throw new Error(error.message)
+}
+
+export async function changeGuidePassword(guideName, currentPassword, newPassword) {
+  if (newPassword.trim().length < 4) throw new Error('Password must be at least 4 characters.')
+  const currentHash = await hashPassword(currentPassword)
+  const { data, error } = await supabase
+    .from('guide_credentials')
+    .select('guide_name')
+    .eq('guide_name', guideName)
+    .eq('password_hash', currentHash)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!data) throw new Error('Current password is incorrect.')
+  const newHash = await hashPassword(newPassword)
+  const { error: updateError } = await supabase
+    .from('guide_credentials')
+    .update({ password_hash: newHash })
+    .eq('guide_name', guideName)
   if (updateError) throw new Error(updateError.message)
 }
 
@@ -146,7 +199,7 @@ function rowToGuide(row) {
   }
 }
 
-function guideToRow(guide, month, { monthClosed = false, published = false } = {}) {
+function guideToRow(guide, month) {
   const days = parseFloat(guide.days)
   const cpd = guide.cpdMode === 'total' && !isNaN(days) && days > 0
     ? parseFloat(guide.cpd) / days
@@ -163,8 +216,6 @@ function guideToRow(guide, month, { monthClosed = false, published = false } = {
     gcr: isNaN(gcr) ? null : gcr,
     qa: parseFloat(guide.qa) || null,
     accountable_days: isNaN(days) ? null : Math.round(days * 10) / 10,
-    published,
-    month_closed: monthClosed,
   }
   if (guide.id) row.id = guide.id
   return row
@@ -175,26 +226,38 @@ export async function getTeam(month) {
     .from('mis_scores')
     .select('*')
     .eq('month', month)
-    .eq('month_closed', false)
     .order('guide_name')
   if (error) throw new Error(error.message)
   return { month, guides: data.map(rowToGuide) }
 }
 
+// Returns an updated guides array with IDs assigned from newly inserted rows.
 export async function saveTeam(month, guides) {
-  if (!guides.length) return
+  if (!guides.length) return guides
   const rows = guides.map(g => guideToRow(g, month))
-  const toUpsert = rows.filter(r => r.id)
-  const toInsert = rows.filter(r => !r.id)
-  if (toUpsert.length) {
-    const { error } = await supabase.from('mis_scores').upsert(toUpsert, { onConflict: 'id' })
+  const upsertRows = rows.filter(r => r.id)
+  const insertRows = rows.filter(r => !r.id)
+  const insertIndices = guides.reduce((acc, g, i) => { if (!g.id) acc.push(i); return acc }, [])
+  if (upsertRows.length) {
+    const { error } = await supabase.from('mis_scores').upsert(upsertRows, { onConflict: 'id' })
     if (error) throw new Error(error.message)
   }
-  if (toInsert.length) {
-    const { data, error } = await supabase.from('mis_scores').insert(toInsert).select('id')
+  if (insertRows.length) {
+    const { data, error } = await supabase.from('mis_scores').insert(insertRows).select('id')
     if (error) throw new Error(error.message)
-    data.forEach((row, i) => { guides[toUpsert.length + i].id = row.id })
+    const updated = [...guides]
+    data.forEach((row, i) => {
+      updated[insertIndices[i]] = { ...updated[insertIndices[i]], id: row.id }
+    })
+    // Ensure guide credentials exist for any new named guides
+    const newNames = insertIndices.map(idx => guides[idx].name).filter(Boolean)
+    if (newNames.length) ensureGuideCredentials(newNames).catch(() => {})
+    return updated
   }
+  // Ensure credentials for any named guides (idempotent)
+  const namedGuides = guides.filter(g => g.name && !g.id).map(g => g.name)
+  if (namedGuides.length) ensureGuideCredentials(namedGuides).catch(() => {})
+  return guides
 }
 
 export async function deleteGuideRow(id) {
@@ -202,22 +265,26 @@ export async function deleteGuideRow(id) {
   if (error) throw new Error(error.message)
 }
 
-export async function closeMonth(month) {
+export async function publishMonth(month) {
   const { error } = await supabase
     .from('mis_scores')
-    .update({ month_closed: true, published: true })
+    .update({ published: true })
     .eq('month', month)
-    .eq('month_closed', false)
   if (error) throw new Error(error.message)
 }
 
-// ── Archive ───────────────────────────────────────────────────────────────────
+export async function clearMonthData(month) {
+  const { error } = await supabase.from('mis_scores').delete().eq('month', month)
+  if (error) throw new Error(error.message)
+}
+
+// ── Archive / Trend ───────────────────────────────────────────────────────────
 
 export async function getArchivedMonths() {
   const { data, error } = await supabase
     .from('mis_scores')
     .select('month')
-    .eq('month_closed', true)
+    .neq('guide_name', '')
   if (error) throw new Error(error.message)
   return [...new Set(data.map(r => r.month))].sort().reverse()
 }
@@ -259,7 +326,7 @@ function scoresToArchiveData(month, rows, config) {
 
 export async function getArchivedMonth(month) {
   const [scoresResult, configResult] = await Promise.all([
-    supabase.from('mis_scores').select('*').eq('month', month).eq('month_closed', true).order('guide_name'),
+    supabase.from('mis_scores').select('*').eq('month', month).order('guide_name'),
     supabase.from('mis_config').select('*').eq('month', month).limit(1),
   ])
   if (scoresResult.error) throw new Error(scoresResult.error.message)
@@ -268,27 +335,11 @@ export async function getArchivedMonth(month) {
   return scoresToArchiveData(month, scoresResult.data, config)
 }
 
-export async function upsertArchivedMonth(month, { guides, config }) {
-  if (!guides || !guides.length) return null
-  const { error: delError } = await supabase
-    .from('mis_scores')
-    .delete()
-    .eq('month', month)
-    .eq('month_closed', true)
-  if (delError) throw new Error(delError.message)
-  const rows = guides.map(g => guideToRow(g, month, { monthClosed: true, published: true }))
-  const { data, error } = await supabase.from('mis_scores').insert(rows).select('*')
-  if (error) throw new Error(error.message)
-  if (config) await saveConfig(config)
-  const savedConfig = config || await getConfig()
-  return scoresToArchiveData(month, data, savedConfig)
-}
+// ── Guide history (requires guide login) ─────────────────────────────────────
 
-// ── Guide history (public — no auth required) ─────────────────────────────────
-
-export async function getGuideHistory(email) {
+export async function getGuideHistory(guideName) {
   const [scoresResult, configsResult] = await Promise.all([
-    supabase.from('mis_scores').select('*').eq('guide_email', email.trim().toLowerCase()).eq('published', true).order('month'),
+    supabase.from('mis_scores').select('*').eq('guide_name', guideName).eq('published', true).order('month'),
     supabase.from('mis_config').select('*'),
   ])
   if (scoresResult.error) throw new Error(scoresResult.error.message)

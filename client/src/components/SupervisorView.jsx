@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { calculateMIS } from '../utils/misCalculator'
 import {
-  getTeam, saveTeam, deleteGuideRow, closeMonth,
-  getArchivedMonths, getArchivedMonth, upsertArchivedMonth,
+  getTeam, saveTeam, deleteGuideRow, publishMonth, clearMonthData,
+  getArchivedMonths, getArchivedMonth,
   saveConfig,
   getSupervisorUsernames, addSupervisorUser, removeSupervisorUser, changeSupervisorPassword,
 } from '../utils/storage'
@@ -59,12 +59,14 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
   const [editingInputConfig, setEditingInputConfig] = useState(false)
   const [inputConfigDraft, setInputConfigDraft] = useState({ ...config })
   const [inputConfigMsg, setInputConfigMsg] = useState('')
-  const [closeMonthMsg, setCloseMonthMsg] = useState('')
-  const [saveMonthMsg, setSaveMonthMsg] = useState('')
+  const [publishMsg, setPublishMsg] = useState('')
   const [rosterPickMonth, setRosterPickMonth] = useState('')
   const [showRosterPicker, setShowRosterPicker] = useState(false)
-  const [editingGuides, setEditingGuides] = useState(false)
-  const inputLoaded = useRef(false)
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
+
+  // userEdited ref: only set true by actual user edits, not by data loads.
+  // This prevents auto-save from firing immediately after loading month data.
+  const userEdited = useRef(false)
 
   // Archive list (shared)
   const [archivedMonths, setArchivedMonths] = useState(null)
@@ -173,12 +175,15 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
 
   useEffect(() => { setAllArchiveData(null) }, [archivedMonths])
 
+  // Trend data: only load for months that are not the current config month
   useEffect(() => {
     if ((tab !== 'trend' && tab !== 'team-trend') || allArchiveData !== null || !archivedMonths?.length) return
+    const trendMonths = archivedMonths.filter(m => m !== config.month)
+    if (!trendMonths.length) { setAllArchiveData({}); return }
     let cancelled = false
     ;(async () => {
       const map = {}
-      for (const m of archivedMonths) {
+      for (const m of trendMonths) {
         try {
           const data = await getArchivedMonth(m)
           if (data) map[m] = data
@@ -191,43 +196,34 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
 
   const loadInputMonth = async (month) => {
     setInputLoading(true)
-    inputLoaded.current = false
+    userEdited.current = false
     setInputResults(null)
-    setEditingGuides(false)
-    setCloseMonthMsg('')
-    setSaveMonthMsg('')
+    setShowResetConfirm(false)
+    setPublishMsg('')
     setInputConfigMsg('')
     setEditingInputConfig(false)
     setShowRosterPicker(false)
 
     try {
+      const data = await getTeam(month)
+      const namedGuides = data.guides?.filter(g => g.name)
+      if (namedGuides?.length > 0) {
+        setInputGuides(data.guides)
+      } else {
+        setInputGuides([{ ...EMPTY_GUIDE }])
+        if (month === config.month) setShowRosterPicker(true)
+      }
       if (month === config.month) {
-        const data = await getTeam(month)
-        if (data.guides?.length > 0 && data.guides.some(g => g.name)) {
-          setInputGuides(data.guides)
-        } else {
-          setInputGuides([{ ...EMPTY_GUIDE }])
-          setShowRosterPicker(true)
-        }
         setInputConfig({ ...config })
         setInputConfigDraft({ ...config })
-      } else if ((archivedMonths || []).includes(month)) {
-        const data = await getArchivedMonth(month)
-        if (data) {
-          setInputGuides(data.guides?.length ? data.guides : [{ ...EMPTY_GUIDE }])
-          setInputConfig(data.config ? { ...data.config } : { ...config })
-          setInputConfigDraft(data.config ? { ...data.config } : { ...config })
-          setInputResults(data.results?.length ? data.results : null)
-        } else {
-          setInputGuides([{ ...EMPTY_GUIDE }])
-        }
       } else {
-        // Future month: pre-fill names from current month, empty actuals
-        const data = await getTeam(config.month)
-        const guides = data.guides?.filter(g => g.name).map(g => ({ ...EMPTY_GUIDE, name: g.name, email: g.email, channel: g.channel || 'voice' }))
-        setInputGuides(guides?.length ? guides : [{ ...EMPTY_GUIDE }])
-        setInputConfig({ ...config, month })
-        setInputConfigDraft({ ...config, month })
+        const archiveData = await getArchivedMonth(month)
+        const cfg = archiveData?.config ?? config
+        setInputConfig({ ...cfg })
+        setInputConfigDraft({ ...cfg })
+        if (archiveData?.results?.length && namedGuides?.length) {
+          setInputResults(archiveData.results)
+        }
       }
     } catch (err) {
       console.error('Error loading month:', err)
@@ -235,19 +231,27 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     }
 
     setInputLoading(false)
-    inputLoaded.current = true
+    // Delay enabling auto-save until after this render's effects have run,
+    // so the setInputGuides above does not trigger an immediate save.
+    setTimeout(() => { userEdited.current = false }, 0)
   }
 
   useEffect(() => { loadInputMonth(inputMonth) }, [inputMonth])
 
-  // Debounced auto-save for current month
+  // Debounced auto-save for all months
   useEffect(() => {
-    if (!inputLoaded.current || !isCurrentMonth) return
+    if (!userEdited.current) return
     setInputSaveStatus('saving')
     const timer = setTimeout(async () => {
       try {
-        await saveTeam(config.month, inputGuides)
+        const updated = await saveTeam(inputMonth, inputGuides)
+        if (updated !== inputGuides) {
+          userEdited.current = false
+          setInputGuides(updated)
+          // userEdited stays false so the setInputGuides above won't re-trigger save
+        }
         setInputSaveStatus('saved')
+        fetchArchivedMonths()
       } catch {
         setInputSaveStatus('error')
       }
@@ -255,12 +259,16 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     return () => clearTimeout(timer)
   }, [inputGuides])
 
+  const markEdited = () => { userEdited.current = true }
+
   const handleGuideChange = (i, field, value) => {
+    markEdited()
     setInputGuides(inputGuides.map((g, idx) => idx === i ? { ...g, [field]: value } : g))
     setInputResults(null)
   }
 
   const toggleMetricMode = (i, metric) => {
+    markEdited()
     setInputGuides(inputGuides.map((g, idx) => idx === i
       ? { ...g, [`${metric}Mode`]: g[`${metric}Mode`] === 'perday' ? 'total' : 'perday', [metric]: '' }
       : g))
@@ -272,37 +280,25 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     setInputResults(calcResults(inputGuides, inputConfig))
   }
 
-  const handleSaveMonth = async () => {
-    setSaveMonthMsg('')
-    const results = calcResults(inputGuides, inputConfig)
+  const handlePublishMonth = async () => {
+    setPublishMsg('')
     try {
-      const updated = await upsertArchivedMonth(inputMonth, { guides: inputGuides, config: inputConfig })
-      setInputResults(updated.results || null)
-      setSaveMonthMsg('Saved.')
-      setEditingGuides(false)
-      setAllArchiveData(null)
-      fetchArchivedMonths()
-    } catch (err) { setSaveMonthMsg(`Error: ${err.message}`) }
+      await publishMonth(inputMonth)
+      setPublishMsg(`${fmtMonth(inputMonth)} scores published.`)
+      setTimeout(() => setPublishMsg(''), 4000)
+    } catch (err) { setPublishMsg(`Error: ${err.message}`) }
   }
 
-  const handleCloseMonth = async () => {
-    setCloseMonthMsg('')
+  const handleResetMonth = async () => {
+    setShowResetConfirm(false)
+    userEdited.current = false
     try {
-      // Save current state first, then close
-      await saveTeam(config.month, inputGuides)
-      await closeMonth(config.month)
-      inputLoaded.current = false
-      // Reset to empty roster for next month
-      const nextGuides = inputGuides.map(g => ({
-        ...EMPTY_GUIDE, name: g.name, email: g.email, channel: g.channel || 'voice',
-      }))
-      setInputGuides(nextGuides)
-      setInputResults(null)
-      setInputSaveStatus(null)
-      inputLoaded.current = true
-      setCloseMonthMsg(`${config.month} archived.`)
+      await clearMonthData(inputMonth)
+      await loadInputMonth(inputMonth)
       fetchArchivedMonths()
-    } catch (err) { setCloseMonthMsg(`Error: ${err.message}`) }
+    } catch (err) {
+      setPublishMsg(`Reset error: ${err.message}`)
+    }
   }
 
   const handleSaveInputConfig = async (e) => {
@@ -317,10 +313,9 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
       } catch (err) { setInputConfigMsg(`Error: ${err.message}`) }
     } else {
       try {
-        const updated = await upsertArchivedMonth(inputMonth, { guides: inputGuides, config: inputConfigDraft })
-        setInputConfig({ ...updated.config })
-        setInputConfigDraft({ ...updated.config })
-        setInputResults(updated.results || null)
+        await saveConfig({ ...inputConfigDraft, month: inputMonth })
+        setInputConfig({ ...inputConfigDraft })
+        setInputResults(calcResults(inputGuides, inputConfigDraft))
         setEditingInputConfig(false)
         setInputConfigMsg('Config saved.')
         setAllArchiveData(null)
@@ -333,11 +328,12 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     try {
       const data = await getArchivedMonth(month)
       if (!data?.guides?.length) return
-      inputLoaded.current = false
-      setInputGuides(data.guides.map(g => ({ ...EMPTY_GUIDE, name: g.name, email: g.email || '', channel: g.channel || 'voice' })))
+      const namedGuides = data.guides.filter(g => g.name)
+      if (!namedGuides.length) return
+      markEdited()
+      setInputGuides(namedGuides.map(g => ({ ...EMPTY_GUIDE, name: g.name, email: g.email || '', channel: g.channel || 'voice' })))
       setInputResults(null)
       setShowRosterPicker(false)
-      inputLoaded.current = true
     } catch { /* ignore */ }
   }
 
@@ -347,6 +343,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     if (guide.id) {
       try { await deleteGuideRow(guide.id) } catch { /* best effort */ }
     }
+    markEdited()
     setInputGuides(inputGuides.filter((_, idx) => idx !== i))
     setInputResults(null)
   }
@@ -369,15 +366,17 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     URL.revokeObjectURL(url)
   }
 
-  // Trend derived values
+  // Trend derived values — only use months that are not the current config month
+  const trendMonths = Object.keys(allArchiveData || {}).filter(m => m !== config.month)
+
   const allGuideNames = allArchiveData
-    ? [...new Set(Object.values(allArchiveData).flatMap(d => (d.results || []).filter(Boolean).map(r => r.name)))].sort()
+    ? [...new Set(trendMonths.flatMap(m => (allArchiveData[m]?.results || []).filter(Boolean).map(r => r.name)))].sort()
     : []
 
   const trendRows = trendGuide && allArchiveData
-    ? Object.entries(allArchiveData)
-        .map(([month, data]) => {
-          const result = data.results?.find(r => r?.name === trendGuide)
+    ? trendMonths
+        .map(month => {
+          const result = allArchiveData[month]?.results?.find(r => r?.name === trendGuide)
           return result ? { month, ...result } : null
         })
         .filter(Boolean)
@@ -393,15 +392,13 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
   const misVals = trendRows.map(r => r.total)
 
   const teamTrendRows = allArchiveData
-    ? Object.entries(allArchiveData)
-        .filter(([, data]) => data.averages)
-        .map(([month, data]) => ({ month, ...data.averages }))
+    ? trendMonths
+        .filter(m => allArchiveData[m]?.averages)
+        .map(m => ({ month: m, ...allArchiveData[m].averages }))
         .sort((a, b) => a.month.localeCompare(b.month))
     : []
 
   const trendDelta = (arr) => arr.length >= 2 ? arr[arr.length - 1] - arr[arr.length - 2] : null
-
-  const isFuture = inputMonth !== config.month && !(archivedMonths || []).includes(inputMonth)
 
   return (
     <div className="view-container">
@@ -507,7 +504,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
               <select value={inputMonth} onChange={e => setInputMonth(e.target.value)}>
                 {allInputMonths.map(m => (
                   <option key={m} value={m}>
-                    {fmtMonth(m)}{m === config.month ? ' (current)' : isFuture && m === inputMonth ? ' (future)' : ''}
+                    {fmtMonth(m)}{m === config.month ? ' (current)' : ''}
                   </option>
                 ))}
               </select>
@@ -587,7 +584,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                       </div>
                     ))}
                     <div className="history-config-form-actions">
-                      <button type="submit" className="btn-primary">{isCurrentMonth ? 'Save Config' : 'Save & Recalculate'}</button>
+                      <button type="submit" className="btn-primary">Save Config</button>
                       <button type="button" className="btn-ghost" onClick={() => { setEditingInputConfig(false); setInputConfigDraft({ ...inputConfig }); setInputConfigMsg('') }}>Cancel</button>
                       {inputConfigMsg && <span className="close-month-msg">{inputConfigMsg}</span>}
                     </div>
@@ -615,18 +612,17 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                 )}
               </div>
 
-              {/* Roster picker for current month (new month) */}
-              {isCurrentMonth && showRosterPicker && (
+              {/* Roster picker (when month has no named guides yet) */}
+              {showRosterPicker && (archivedMonths || []).filter(m => m !== config.month).length > 0 && (
                 <div className="new-month-banner">
                   <span>Import guide names from a previous month?</span>
                   <div className="new-month-controls">
                     <select
                       value={rosterPickMonth}
                       onChange={e => setRosterPickMonth(e.target.value)}
-                      disabled={!archivedMonths?.length}
                     >
                       <option value="">— select month —</option>
-                      {(archivedMonths || []).map(m => (
+                      {(archivedMonths || []).filter(m => m !== config.month).map(m => (
                         <option key={m} value={m}>{fmtMonth(m)}</option>
                       ))}
                     </select>
@@ -640,8 +636,8 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                 </div>
               )}
 
-              {/* Team averages (archived months with data) */}
-              {!isCurrentMonth && !isFuture && inputResults && (() => {
+              {/* Team averages (for months with results) */}
+              {!isCurrentMonth && inputResults && (() => {
                 const valid = inputResults.filter(Boolean)
                 if (!valid.length) return null
                 const avg = arr => Math.round(arr.reduce((s, v) => s + v, 0) / arr.length * 100) / 100
@@ -687,171 +683,139 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
               <div className="results-card">
                 <div className="results-header">
                   <h3>
-                    {isFuture ? `Guides — ${fmtMonth(inputMonth)}` : isCurrentMonth ? `${fmtMonth(inputMonth)} — In Progress` : `${fmtMonth(inputMonth)} Team Results`}
+                    {isCurrentMonth ? `${fmtMonth(inputMonth)} — In Progress` : `${fmtMonth(inputMonth)}`}
                   </h3>
-                  {isCurrentMonth && inputSaveStatus && (
+                  {inputSaveStatus && (
                     <span className={`save-status ${inputSaveStatus}`}>
                       {inputSaveStatus === 'saving' ? 'Saving…' : inputSaveStatus === 'saved' ? 'Saved' : 'Save failed'}
                     </span>
                   )}
                 </div>
 
-                {(isCurrentMonth || isFuture || editingGuides) ? (
-                  <>
-                    <div className="bulk-table-wrap">
-                      <table className="bulk-input-table">
-                        <thead>
-                          <tr>
-                            <th>Guide Name</th>
-                            <th>Email</th>
-                            <th>Channel</th>
-                            <th>CPD <span className="th-hint">target: {inputConfig.cpd?.target}/day</span></th>
-                            <th>GCR <span className="th-hint th-hint-stack"><span>Voice: ${inputConfig.gcrVoice?.target}/day</span><span>Msg: ${inputConfig.gcrMessaging?.target}/day</span></span></th>
-                            <th>QA <span className="th-hint">target: {inputConfig.qa?.target}%</span></th>
-                            <th>Accountable Days</th>
-                            <th></th>
+                <div className="bulk-table-wrap">
+                  <table className="bulk-input-table">
+                    <thead>
+                      <tr>
+                        <th>Guide Name</th>
+                        <th>Email</th>
+                        <th>Channel</th>
+                        <th>CPD <span className="th-hint">target: {inputConfig.cpd?.target}/day</span></th>
+                        <th>GCR <span className="th-hint th-hint-stack"><span>Voice: ${inputConfig.gcrVoice?.target}/day</span><span>Msg: ${inputConfig.gcrMessaging?.target}/day</span></span></th>
+                        <th>QA <span className="th-hint">target: {inputConfig.qa?.target}%</span></th>
+                        <th>Accountable Days</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {inputGuides.map((g, i) => {
+                        const days = parseFloat(g.days)
+                        const computedCPD = g.cpdMode === 'total' && g.cpd && days > 0 ? (parseFloat(g.cpd) / days).toFixed(2) : null
+                        const computedGCR = g.gcrMode === 'total' && g.gcr && days > 0 ? (parseFloat(g.gcr) / days).toFixed(2) : null
+                        return (
+                          <tr key={i}>
+                            <td>
+                              <div className="cell-col">
+                                <div className="cell-header" />
+                                <input value={g.name} onChange={e => handleGuideChange(i, 'name', e.target.value)} placeholder="Name" />
+                              </div>
+                            </td>
+                            <td>
+                              <div className="cell-col">
+                                <div className="cell-header" />
+                                <input type="email" value={g.email || ''} onChange={e => handleGuideChange(i, 'email', e.target.value)} placeholder="email@example.com" />
+                              </div>
+                            </td>
+                            <td>
+                              <div className="cell-col">
+                                <div className="cell-header" />
+                                <select value={g.channel || 'voice'} onChange={e => handleGuideChange(i, 'channel', e.target.value)} className="channel-select">
+                                  <option value="voice">Voice</option>
+                                  <option value="messaging">Messaging</option>
+                                </select>
+                              </div>
+                            </td>
+                            <td>
+                              <div className="cell-col">
+                                <div className="cell-header">
+                                  <button type="button" className={`mini-toggle ${g.cpdMode === 'perday' ? 'active' : ''}`} onClick={() => toggleMetricMode(i, 'cpd')}>day</button>
+                                  <button type="button" className={`mini-toggle ${g.cpdMode === 'total' ? 'active' : ''}`} onClick={() => toggleMetricMode(i, 'cpd')}>total</button>
+                                </div>
+                                <input type="number" value={g.cpd} onChange={e => handleGuideChange(i, 'cpd', e.target.value)} placeholder={g.cpdMode === 'total' ? 'Total contacts' : 'Per day'} step="0.01" />
+                                {computedCPD && <span className="computed-hint">{computedCPD}/day</span>}
+                              </div>
+                            </td>
+                            <td>
+                              <div className="cell-col">
+                                <div className="cell-header">
+                                  <button type="button" className={`mini-toggle ${g.gcrMode === 'perday' ? 'active' : ''}`} onClick={() => toggleMetricMode(i, 'gcr')}>day</button>
+                                  <button type="button" className={`mini-toggle ${g.gcrMode === 'total' ? 'active' : ''}`} onClick={() => toggleMetricMode(i, 'gcr')}>total</button>
+                                </div>
+                                <input type="number" value={g.gcr} onChange={e => handleGuideChange(i, 'gcr', e.target.value)} placeholder={g.gcrMode === 'total' ? 'Total GCR ($)' : 'Per day ($)'} step="0.01" />
+                                {computedGCR && <span className="computed-hint">${computedGCR}/day</span>}
+                              </div>
+                            </td>
+                            <td>
+                              <div className="cell-col">
+                                <div className="cell-header" />
+                                <input type="number" value={g.qa} onChange={e => handleGuideChange(i, 'qa', e.target.value)} placeholder="QA %" step="0.01" min="0" max="100" />
+                              </div>
+                            </td>
+                            <td>
+                              <div className="cell-col">
+                                <div className="cell-header" />
+                                <input type="number" value={g.days} onChange={e => handleGuideChange(i, 'days', e.target.value)} placeholder="# days" min="0.1" step="0.1" />
+                              </div>
+                            </td>
+                            <td>
+                              <div className="cell-col">
+                                <div className="cell-header" />
+                                <button type="button" className="btn-remove" onClick={() => handleRemoveGuide(i)}>✕</button>
+                              </div>
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {inputGuides.map((g, i) => {
-                            const days = parseFloat(g.days)
-                            const computedCPD = g.cpdMode === 'total' && g.cpd && days > 0 ? (parseFloat(g.cpd) / days).toFixed(2) : null
-                            const computedGCR = g.gcrMode === 'total' && g.gcr && days > 0 ? (parseFloat(g.gcr) / days).toFixed(2) : null
-                            return (
-                              <tr key={i}>
-                                <td>
-                                  <div className="cell-col">
-                                    <div className="cell-header" />
-                                    <input value={g.name} onChange={e => handleGuideChange(i, 'name', e.target.value)} placeholder="Name" />
-                                  </div>
-                                </td>
-                                <td>
-                                  <div className="cell-col">
-                                    <div className="cell-header" />
-                                    <input type="email" value={g.email || ''} onChange={e => handleGuideChange(i, 'email', e.target.value)} placeholder="email@example.com" required />
-                                  </div>
-                                </td>
-                                <td>
-                                  <div className="cell-col">
-                                    <div className="cell-header" />
-                                    <select value={g.channel || 'voice'} onChange={e => handleGuideChange(i, 'channel', e.target.value)} className="channel-select">
-                                      <option value="voice">Voice</option>
-                                      <option value="messaging">Messaging</option>
-                                    </select>
-                                  </div>
-                                </td>
-                                <td>
-                                  <div className="cell-col">
-                                    <div className="cell-header">
-                                      <button type="button" className={`mini-toggle ${g.cpdMode === 'perday' ? 'active' : ''}`} onClick={() => toggleMetricMode(i, 'cpd')}>day</button>
-                                      <button type="button" className={`mini-toggle ${g.cpdMode === 'total' ? 'active' : ''}`} onClick={() => toggleMetricMode(i, 'cpd')}>total</button>
-                                    </div>
-                                    <input type="number" value={g.cpd} onChange={e => handleGuideChange(i, 'cpd', e.target.value)} placeholder={g.cpdMode === 'total' ? 'Total contacts' : 'Per day'} step="0.01" />
-                                    {computedCPD && <span className="computed-hint">{computedCPD}/day</span>}
-                                  </div>
-                                </td>
-                                <td>
-                                  <div className="cell-col">
-                                    <div className="cell-header">
-                                      <button type="button" className={`mini-toggle ${g.gcrMode === 'perday' ? 'active' : ''}`} onClick={() => toggleMetricMode(i, 'gcr')}>day</button>
-                                      <button type="button" className={`mini-toggle ${g.gcrMode === 'total' ? 'active' : ''}`} onClick={() => toggleMetricMode(i, 'gcr')}>total</button>
-                                    </div>
-                                    <input type="number" value={g.gcr} onChange={e => handleGuideChange(i, 'gcr', e.target.value)} placeholder={g.gcrMode === 'total' ? 'Total GCR ($)' : 'Per day ($)'} step="0.01" />
-                                    {computedGCR && <span className="computed-hint">${computedGCR}/day</span>}
-                                  </div>
-                                </td>
-                                <td>
-                                  <div className="cell-col">
-                                    <div className="cell-header" />
-                                    <input type="number" value={g.qa} onChange={e => handleGuideChange(i, 'qa', e.target.value)} placeholder="QA %" step="0.01" min="0" max="100" />
-                                  </div>
-                                </td>
-                                <td>
-                                  <div className="cell-col">
-                                    <div className="cell-header" />
-                                    <input type="number" value={g.days} onChange={e => handleGuideChange(i, 'days', e.target.value)} placeholder="# days" min="0.1" step="0.1" />
-                                  </div>
-                                </td>
-                                <td>
-                                  <div className="cell-col">
-                                    <div className="cell-header" />
-                                    <button type="button" className="btn-remove" onClick={() => handleRemoveGuide(i)}>✕</button>
-                                  </div>
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div className="bulk-actions">
-                      <button type="button" className="btn-secondary" onClick={() => { setInputGuides([...inputGuides, { ...EMPTY_GUIDE }]); setInputResults(null) }}>+ Add Guide</button>
-                      {isCurrentMonth ? (
-                        <button type="button" className="btn-primary" onClick={handleCalculate}>Calculate All</button>
-                      ) : (
-                        <button type="button" className="btn-primary" onClick={handleSaveMonth}>Save &amp; Recalculate</button>
-                      )}
-                      {isCurrentMonth && (
-                        <div className="bulk-actions-right">
-                          <button type="button" className="btn-close-month" onClick={handleCloseMonth}>
-                            Close {config.month}
-                          </button>
-                          {closeMonthMsg && <span className="close-month-msg">{closeMonthMsg}</span>}
-                        </div>
-                      )}
-                      {!isCurrentMonth && editingGuides && (
-                        <button type="button" className="btn-ghost" onClick={() => { setEditingGuides(false); loadInputMonth(inputMonth) }}>Cancel</button>
-                      )}
-                      {saveMonthMsg && <span className="close-month-msg">{saveMonthMsg}</span>}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div style={{ marginBottom: '0.75rem' }}>
-                      <button className="btn-secondary" onClick={() => { setEditingGuides(true); setInputResults(null) }}>Edit Month</button>
-                    </div>
-                    {inputResults?.length > 0 ? (
-                      <table className="score-table">
-                        <thead>
-                          <tr><th>Name</th><th>Channel</th><th>CPD</th><th>GCR</th><th>QA</th><th>Total MIS</th><th>Status</th></tr>
-                        </thead>
-                        <tbody>
-                          {inputResults.map((r, i) => r ? (
-                            <tr key={i}>
-                              <td>{r.name}</td>
-                              <td>{r.channel === 'messaging' ? 'Messaging' : 'Voice'}</td>
-                              <td><div className="result-metric-cell"><span className="result-actual">{r.actuals.cpd.toFixed(2)}/day</span><span className="result-points" style={{ color: scoreColor(r.cpd) }}>{fmtSigned(r.cpd)} pts</span></div></td>
-                              <td><div className="result-metric-cell"><span className="result-actual">${r.actuals.gcr.toFixed(2)}/day</span><span className="result-points" style={{ color: scoreColor(r.gcr) }}>{fmtSigned(r.gcr)} pts</span></div></td>
-                              <td><div className="result-metric-cell"><span className="result-actual">{r.actuals.qa.toFixed(1)}%</span><span className="result-points" style={{ color: scoreColor(r.qa) }}>{fmtSigned(r.qa)} pts</span></div></td>
-                              <td style={{ color: scoreColor(r.total), fontWeight: 'bold' }}>{fmtSigned(r.total)}</td>
-                              <td><span className={`pass-badge small ${r.passing ? 'pass' : 'fail'}`}>{r.passing ? 'On Track' : 'Off Track'}</span></td>
-                            </tr>
-                          ) : null)}
-                        </tbody>
-                      </table>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="bulk-actions">
+                  <button type="button" className="btn-secondary" onClick={() => { markEdited(); setInputGuides([...inputGuides, { ...EMPTY_GUIDE }]); setInputResults(null) }}>+ Add Guide</button>
+                  <button type="button" className="btn-primary" onClick={handleCalculate}>Calculate All</button>
+                  <div className="bulk-actions-right">
+                    {showResetConfirm ? (
+                      <span className="reset-confirm-inline">
+                        <span className="reset-confirm-label">Reset {fmtMonth(inputMonth)}?</span>
+                        <button type="button" className="btn-danger-sm" onClick={handleResetMonth}>Yes, Reset</button>
+                        <button type="button" className="btn-ghost" onClick={() => setShowResetConfirm(false)}>Cancel</button>
+                      </span>
                     ) : (
-                      <p className="subtext">No results recorded. Click "Edit Month" to add data.</p>
+                      <button type="button" className="btn-ghost" onClick={() => setShowResetConfirm(true)}>Reset Month</button>
                     )}
-                  </>
-                )}
+                    <button type="button" className="btn-secondary" onClick={handlePublishMonth}>
+                      Publish {fmtMonth(inputMonth)}
+                    </button>
+                    {publishMsg && <span className="close-month-msg">{publishMsg}</span>}
+                  </div>
+                </div>
 
-                {isCurrentMonth && inputResults && (
+                {inputResults && (
                   <div style={{ marginTop: '1.5rem' }}>
                     <table className="score-table">
                       <thead>
-                        <tr><th>Name</th><th>CPD</th><th>GCR</th><th>QA</th><th>Total MIS</th><th>Status</th></tr>
+                        <tr><th>Name</th><th>Channel</th><th>CPD</th><th>GCR</th><th>QA</th><th>Total MIS</th><th>Status</th></tr>
                       </thead>
                       <tbody>
                         {inputResults.map((r, i) => r ? (
                           <tr key={i}>
                             <td>{r.name}</td>
+                            <td>{r.channel === 'messaging' ? 'Messaging' : 'Voice'}</td>
                             <td><div className="result-metric-cell"><span className="result-actual">{r.actuals.cpd.toFixed(2)}/day</span><span className="result-points" style={{ color: scoreColor(r.cpd) }}>{fmtSigned(r.cpd)} pts</span></div></td>
                             <td><div className="result-metric-cell"><span className="result-actual">${r.actuals.gcr.toFixed(2)}/day</span><span className="result-points" style={{ color: scoreColor(r.gcr) }}>{fmtSigned(r.gcr)} pts</span></div></td>
                             <td><div className="result-metric-cell"><span className="result-actual">{r.actuals.qa.toFixed(1)}%</span><span className="result-points" style={{ color: scoreColor(r.qa) }}>{fmtSigned(r.qa)} pts</span></div></td>
                             <td style={{ color: scoreColor(r.total), fontWeight: 'bold' }}>{fmtSigned(r.total)}</td>
                             <td><span className={`pass-badge small ${r.passing ? 'pass' : 'fail'}`}>{r.passing ? 'On Track' : 'Off Track'}</span></td>
                           </tr>
-                        ) : <tr key={i}><td colSpan={6} className="invalid-row">Incomplete data for row {i + 1}</td></tr>)}
+                        ) : <tr key={i}><td colSpan={7} className="invalid-row">Incomplete data for row {i + 1}</td></tr>)}
                       </tbody>
                     </table>
                   </div>
@@ -866,11 +830,11 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
       {tab === 'team-trend' && (
         <div className="trend-tab">
           {!archivedMonths?.length ? (
-            <p className="subtext">No archived months yet. Close a month first to see trends.</p>
+            <p className="subtext">No data yet. Add and save guide scores to see trends.</p>
           ) : !allArchiveData ? (
             <p className="subtext">Loading…</p>
           ) : teamTrendRows.length === 0 ? (
-            <p className="subtext">No team averages found. Averages are computed when a month is closed.</p>
+            <p className="subtext">No completed months to show trends for yet.</p>
           ) : (() => {
             const ttCpdVals = teamTrendRows.map(r => r.cpd)
             const ttGcrVals = teamTrendRows.map(r => r.gcr)
@@ -946,7 +910,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
       {tab === 'trend' && (
         <div className="trend-tab">
           {!archivedMonths?.length ? (
-            <p className="subtext">No archived months yet. Close a month first to see trends.</p>
+            <p className="subtext">No data yet. Add and save guide scores to see trends.</p>
           ) : (
             <>
               <div className="trend-guide-select">
@@ -961,7 +925,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
               </div>
 
               {trendGuide && trendRows.length === 0 && (
-                <p className="subtext">No archived data found for {trendGuide}.</p>
+                <p className="subtext">No data found for {trendGuide}.</p>
               )}
 
               {trendRows.length > 0 && (

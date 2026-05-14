@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { calculateMIS, SCORE_RAILS } from '../utils/misCalculator'
 import ScoreGauge from './ScoreGauge'
 import MetricRow from './MetricRow'
-import { getGuideHistory } from '../utils/storage'
+import { getGuideHistory, checkGuide, getGuideNames, changeGuidePassword } from '../utils/storage'
 
 // ── Math helpers ────────────────────────────────────────────────────────────
 
@@ -129,23 +129,99 @@ function Sparkline({ values, color, width = 130, height = 40 }) {
   )
 }
 
-function HistoryPanel() {
-  const [email, setEmail] = useState('')
-  const [rows, setRows] = useState(null)
-  const [loading, setLoading] = useState(false)
+function GuideLoginGate({ onLogin }) {
+  const [guideNames, setGuideNames] = useState([])
+  const [guideName, setGuideName] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const handleLookup = async (e) => {
+  useEffect(() => {
+    getGuideNames().then(names => {
+      setGuideNames(names)
+      if (names.length === 1) setGuideName(names[0])
+    }).catch(() => {})
+  }, [])
+
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     setLoading(true)
     try {
-      const data = await getGuideHistory(email)
-      setRows(data)
-    } catch (err) {
-      setError(err.message || 'Something went wrong. Please try again.')
+      const ok = await checkGuide(guideName, password)
+      if (ok) {
+        onLogin(guideName)
+      } else {
+        setError('Incorrect name or password.')
+      }
+    } catch {
+      setError('Could not verify credentials. Please try again.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  return (
+    <div className="password-gate">
+      <div className="password-card">
+        <h2>Guide Access</h2>
+        <p className="subtext" style={{ marginBottom: '1rem' }}>Log in to view your published scores.</p>
+        <form onSubmit={handleSubmit}>
+          <select
+            value={guideName}
+            onChange={e => { setGuideName(e.target.value); setError('') }}
+            required
+            autoFocus
+            disabled={loading}
+          >
+            <option value="" disabled>Select your name</option>
+            {guideNames.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+          <input
+            type="password"
+            value={password}
+            onChange={e => { setPassword(e.target.value); setError('') }}
+            placeholder="Password"
+            required
+            disabled={loading}
+          />
+          {error && <p className="gate-error">{error}</p>}
+          <button type="submit" className="btn-primary" disabled={loading || !guideName}>
+            {loading ? 'Checking…' : 'View My Scores'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function HistoryPanel({ guideUser, onLogout }) {
+  const [rows, setRows] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [showSettings, setShowSettings] = useState(false)
+  const [pwCurrent, setPwCurrent] = useState('')
+  const [pwNew, setPwNew] = useState('')
+  const [pwConfirm, setPwConfirm] = useState('')
+  const [pwMsg, setPwMsg] = useState(null)
+
+  useEffect(() => {
+    setLoading(true)
+    getGuideHistory(guideUser)
+      .then(data => { setRows(data); setLoading(false) })
+      .catch(err => { setError(err.message || 'Failed to load scores.'); setLoading(false) })
+  }, [guideUser])
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault()
+    if (pwNew !== pwConfirm) { setPwMsg({ ok: false, text: 'New passwords do not match.' }); return }
+    try {
+      await changeGuidePassword(guideUser, pwCurrent, pwNew)
+      setPwCurrent(''); setPwNew(''); setPwConfirm('')
+      setPwMsg({ ok: true, text: 'Password updated.' })
+      setTimeout(() => setPwMsg(null), 3000)
+    } catch (err) {
+      setPwMsg({ ok: false, text: err.message })
     }
   }
 
@@ -159,28 +235,43 @@ function HistoryPanel() {
 
   return (
     <div className="trend-tab">
-      <div className="trend-guide-select">
-        <span className="trend-label">Work email</span>
-        <form onSubmit={handleLookup} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <input
-            type="email"
-            value={email}
-            onChange={e => { setEmail(e.target.value); setRows(null); setError('') }}
-            placeholder="you@example.com"
-            required
-            disabled={loading}
-            style={{ flex: '1', minWidth: '180px' }}
-          />
-          <button type="submit" className="btn-secondary" disabled={loading}>
-            {loading ? 'Loading…' : 'Load History'}
-          </button>
-        </form>
+      <div className="history-guide-header">
+        <span className="history-guide-name">Viewing scores for <strong>{guideUser}</strong></span>
+        <div className="history-guide-actions">
+          <button className="btn-gear" title="Settings" onClick={() => setShowSettings(v => !v)}>⚙</button>
+          <button className="btn-ghost" onClick={onLogout}>Log Out</button>
+        </div>
       </div>
 
+      {showSettings && (
+        <div className="guide-settings-panel">
+          <h4>Change Password</h4>
+          <form onSubmit={handleChangePassword} className="password-form">
+            <label className="password-field">
+              <span>Current password</span>
+              <input type="password" value={pwCurrent} onChange={e => setPwCurrent(e.target.value)} required autoComplete="current-password" />
+            </label>
+            <label className="password-field">
+              <span>New password</span>
+              <input type="password" value={pwNew} onChange={e => setPwNew(e.target.value)} required autoComplete="new-password" />
+            </label>
+            <label className="password-field">
+              <span>Confirm new password</span>
+              <input type="password" value={pwConfirm} onChange={e => setPwConfirm(e.target.value)} required autoComplete="new-password" />
+            </label>
+            <div className="password-actions">
+              <button type="submit" className="btn-primary">Update Password</button>
+              {pwMsg && <span className={pwMsg.ok ? 'close-month-msg' : 'close-month-msg error-msg'}>{pwMsg.text}</span>}
+            </div>
+          </form>
+        </div>
+      )}
+
+      {loading && <p className="subtext">Loading…</p>}
       {error && <p className="gate-error">{error}</p>}
 
-      {rows !== null && rows.length === 0 && (
-        <p className="subtext">No published scores found for <strong>{email}</strong>. Check back once your supervisor has published results.</p>
+      {!loading && rows !== null && rows.length === 0 && (
+        <p className="subtext">No published scores found yet. Check back once your supervisor has published results.</p>
       )}
 
       {rows && rows.length > 0 && (
@@ -247,7 +338,7 @@ function HistoryPanel() {
 
 // ── Main component ───────────────────────────────────────────────────────────
 
-export default function GuideView({ config }) {
+export default function GuideView({ config, guideUser, onGuideLogin, onGuideLogout }) {
   const [activeTab, setActiveTab] = useState('calculator')
   const [cpdMode, setCpdMode] = useState('perday')
   const [gcrMode, setGcrMode] = useState('perday')
@@ -321,7 +412,11 @@ export default function GuideView({ config }) {
         </button>
       </div>
 
-      {activeTab === 'lookup' && <HistoryPanel />}
+      {activeTab === 'lookup' && (
+        guideUser
+          ? <HistoryPanel guideUser={guideUser} onLogout={onGuideLogout} />
+          : <GuideLoginGate onLogin={onGuideLogin} />
+      )}
 
       {activeTab === 'calculator' && (
         <>

@@ -6,11 +6,13 @@ import { getConfig, saveConfig } from './utils/storage'
 import './App.css'
 
 const SESSION_KEY = 'pss-mis:supervisor'
+const GUIDE_SESSION_KEY = 'pss-mis:guide'
 
 export default function App() {
   const [role, setRole] = useState(null)
   const [showAbout, setShowAbout] = useState(false)
   const [supervisorUser, setSupervisorUser] = useState(() => sessionStorage.getItem(SESSION_KEY))
+  const [guideUser, setGuideUser] = useState(() => sessionStorage.getItem(GUIDE_SESSION_KEY))
   const [config, setConfig] = useState(null)
   const [configLoading, setConfigLoading] = useState(true)
 
@@ -29,6 +31,16 @@ export default function App() {
     sessionStorage.removeItem(SESSION_KEY)
     setSupervisorUser(null)
     setRole(null)
+  }
+
+  const handleGuideLogin = (name) => {
+    sessionStorage.setItem(GUIDE_SESSION_KEY, name)
+    setGuideUser(name)
+  }
+
+  const handleGuideLogout = () => {
+    sessionStorage.removeItem(GUIDE_SESSION_KEY)
+    setGuideUser(null)
   }
 
   const handleSwitchRole = () => {
@@ -352,7 +364,7 @@ export default function App() {
       </header>
       <main>
         {role === 'guide'
-          ? <GuideView config={config} />
+          ? <GuideView config={config} guideUser={guideUser} onGuideLogin={handleGuideLogin} onGuideLogout={handleGuideLogout} />
           : <SupervisorView config={config} onConfigSave={handleConfigSave} currentUser={supervisorUser} />
         }
       </main>
