@@ -284,15 +284,24 @@ export async function upsertArchivedMonth(month, { guides, config }) {
   return scoresToArchiveData(month, data, savedConfig)
 }
 
-// ── Guide score lookup (public — no auth required) ────────────────────────────
+// ── Guide history (public — no auth required) ─────────────────────────────────
 
-export async function getPublishedScoresForEmail(email) {
-  const { data, error } = await supabase
-    .from('mis_scores')
-    .select('*')
-    .eq('guide_email', email.trim().toLowerCase())
-    .eq('published', true)
-    .order('month', { ascending: false })
-  if (error) throw new Error(error.message)
-  return data
+export async function getGuideHistory(email) {
+  const [scoresResult, configsResult] = await Promise.all([
+    supabase.from('mis_scores').select('*').eq('guide_email', email.trim().toLowerCase()).eq('published', true).order('month'),
+    supabase.from('mis_config').select('*'),
+  ])
+  if (scoresResult.error) throw new Error(scoresResult.error.message)
+  if (configsResult.error) throw new Error(configsResult.error.message)
+
+  const configByMonth = {}
+  configsResult.data.forEach(row => { configByMonth[row.month] = rowToConfig(row) })
+
+  return scoresResult.data.map(row => {
+    const config = configByMonth[row.month]
+    if (!config || row.cpd == null || row.gcr == null || row.qa == null) return null
+    const actuals = { cpd: Number(row.cpd), gcr: Number(row.gcr), qa: Number(row.qa) }
+    const gcrCfg = row.channel === 'messaging' ? config.gcrMessaging : config.gcrVoice
+    return { month: row.month, channel: row.channel, actuals, ...calculateMIS(actuals, { ...config, gcr: gcrCfg }) }
+  }).filter(Boolean)
 }

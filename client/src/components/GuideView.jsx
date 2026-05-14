@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { calculateMIS, SCORE_RAILS } from '../utils/misCalculator'
 import ScoreGauge from './ScoreGauge'
 import MetricRow from './MetricRow'
-import { getPublishedScoresForEmail } from '../utils/storage'
+import { getGuideHistory } from '../utils/storage'
 
 // ── Math helpers ────────────────────────────────────────────────────────────
 
@@ -98,16 +98,40 @@ function QaGuidanceRow({ currentAvg, qaCount, qaRemaining, needed, qaTarget }) {
   )
 }
 
-// ── Score lookup panel ────────────────────────────────────────────────────────
+// ── History panel ─────────────────────────────────────────────────────────────
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const fmtMonth = (m) => { const [y, mm] = m.split('-'); return `${MONTH_NAMES[+mm - 1]} ${y}` }
 const fmtSigned = (v) => { const n = parseFloat(Number(v).toFixed(2)); return (n > 0 ? '+' : '') + n }
 const scoreColor = (s) => s > 0 ? '#22c55e' : s === 0 ? '#f59e0b' : '#ef4444'
+const trendDelta = (arr) => arr.length >= 2 ? arr[arr.length - 1] - arr[arr.length - 2] : null
 
-function ScoreLookup() {
+function Sparkline({ values, color, width = 130, height = 40 }) {
+  if (values.length < 2) return <span className="sparkline-empty">not enough data</span>
+  const pad = 4
+  const min = Math.min(0, ...values)
+  const max = Math.max(0, ...values)
+  const range = max - min || 1
+  const toY = (v) => height - pad - ((v - min) / range) * (height - pad * 2)
+  const pts = values.map((v, i) => {
+    const x = pad + (i / (values.length - 1)) * (width - pad * 2)
+    return `${x.toFixed(1)},${toY(v).toFixed(1)}`
+  }).join(' ')
+  const lastX = (width - pad).toFixed(1)
+  const lastY = toY(values[values.length - 1]).toFixed(1)
+  const zeroY = toY(0).toFixed(1)
+  return (
+    <svg width={width} height={height}>
+      <line x1={pad} y1={zeroY} x2={width - pad} y2={zeroY} stroke="#475569" strokeWidth="1" strokeDasharray="3 2" />
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={lastX} cy={lastY} r="3" fill={color} />
+    </svg>
+  )
+}
+
+function HistoryPanel() {
   const [email, setEmail] = useState('')
-  const [scores, setScores] = useState(null)
+  const [rows, setRows] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -116,8 +140,8 @@ function ScoreLookup() {
     setError('')
     setLoading(true)
     try {
-      const data = await getPublishedScoresForEmail(email)
-      setScores(data)
+      const data = await getGuideHistory(email)
+      setRows(data)
     } catch (err) {
       setError(err.message || 'Something went wrong. Please try again.')
     } finally {
@@ -125,56 +149,97 @@ function ScoreLookup() {
     }
   }
 
+  const cpdPts  = (rows || []).map(r => r.cpd)
+  const gcrPts  = (rows || []).map(r => r.gcr)
+  const qaPts   = (rows || []).map(r => r.qa)
+  const cpdVals = (rows || []).map(r => r.actuals.cpd)
+  const gcrVals = (rows || []).map(r => r.actuals.gcr)
+  const qaVals  = (rows || []).map(r => r.actuals.qa)
+  const misVals = (rows || []).map(r => r.total)
+
   return (
-    <div className="score-lookup-panel">
-      <form onSubmit={handleLookup} className="input-form">
-        <label>
-          <div className="field-header"><span>Work Email</span></div>
+    <div className="trend-tab">
+      <div className="trend-guide-select">
+        <span className="trend-label">Work email</span>
+        <form onSubmit={handleLookup} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <input
             type="email"
             value={email}
-            onChange={e => { setEmail(e.target.value); setScores(null); setError('') }}
+            onChange={e => { setEmail(e.target.value); setRows(null); setError('') }}
             placeholder="you@example.com"
             required
-            autoFocus
             disabled={loading}
+            style={{ flex: '1', minWidth: '180px' }}
           />
-        </label>
-        {error && <p className="gate-error">{error}</p>}
-        <button type="submit" className="btn-primary" disabled={loading}>
-          {loading ? 'Looking up…' : 'Look Up My Scores'}
-        </button>
-      </form>
+          <button type="submit" className="btn-secondary" disabled={loading}>
+            {loading ? 'Loading…' : 'Load History'}
+          </button>
+        </form>
+      </div>
 
-      {scores !== null && (
-        scores.length === 0 ? (
-          <p className="subtext" style={{ marginTop: '1rem' }}>
-            No published scores found for <strong>{email}</strong>. Check back once your supervisor has published results.
-          </p>
-        ) : (
-          <div style={{ marginTop: '1.5rem' }}>
-            <p className="subtext">Published scores for <strong>{email}</strong>:</p>
-            <table className="score-table">
-              <thead>
-                <tr><th>Month</th><th>Channel</th><th>CPD</th><th>GCR</th><th>QA</th></tr>
-              </thead>
-              <tbody>
-                {scores.map(row => (
-                  <tr key={row.id}>
-                    <td style={{ whiteSpace: 'nowrap' }}>{fmtMonth(row.month)}</td>
-                    <td>{row.channel === 'messaging' ? 'Messaging' : 'Voice'}</td>
-                    <td>{row.cpd != null ? `${Number(row.cpd).toFixed(2)}/day` : '—'}</td>
-                    <td>{row.gcr != null ? `$${Number(row.gcr).toFixed(2)}/day` : '—'}</td>
-                    <td>{row.qa != null ? `${Number(row.qa).toFixed(1)}%` : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="subtext" style={{ marginTop: '0.75rem', fontSize: '0.8rem' }}>
-              Final MIS scores are calculated by your supervisor. Contact them if you have questions.
-            </p>
+      {error && <p className="gate-error">{error}</p>}
+
+      {rows !== null && rows.length === 0 && (
+        <p className="subtext">No published scores found for <strong>{email}</strong>. Check back once your supervisor has published results.</p>
+      )}
+
+      {rows && rows.length > 0 && (
+        <>
+          <div className="trend-cards">
+            {[
+              { label: 'CPD',       sparkVals: cpdPts, dispVals: cpdVals, ptsVals: cpdPts, color: '#3b82f6', fmt: v => `${v.toFixed(2)}/day`, dFmt: v => v.toFixed(2) },
+              { label: 'GCR',       sparkVals: gcrPts, dispVals: gcrVals, ptsVals: gcrPts, color: '#22c55e', fmt: v => `$${v.toFixed(2)}/day`, dFmt: v => `$${v.toFixed(2)}` },
+              { label: 'QA',        sparkVals: qaPts,  dispVals: qaVals,  ptsVals: qaPts,  color: '#f59e0b', fmt: v => `${v.toFixed(1)}%`, dFmt: v => `${v.toFixed(1)}%` },
+              { label: 'Total MIS', sparkVals: misVals, dispVals: misVals, ptsVals: null,  color: scoreColor(misVals[misVals.length - 1]), fmt: v => fmtSigned(v), dFmt: v => fmtSigned(v) },
+            ].map(({ label, sparkVals, dispVals, ptsVals, color, fmt, dFmt }) => {
+              const d    = trendDelta(dispVals)
+              const dPts = ptsVals ? trendDelta(ptsVals) : null
+              return (
+                <div key={label} className="trend-card">
+                  <span className="trend-card-label">{label}</span>
+                  <Sparkline values={sparkVals} color={color} />
+                  <div className="trend-card-footer">
+                    <span className="trend-card-latest" style={{ color }}>{fmt(dispVals[dispVals.length - 1])}</span>
+                    {d != null && (
+                      <span className="trend-delta" style={{ color: d > 0 ? '#22c55e' : d < 0 ? '#ef4444' : '#f59e0b' }}>
+                        {d > 0 ? '↑' : d < 0 ? '↓' : '→'} {dFmt(Math.abs(d))}
+                      </span>
+                    )}
+                  </div>
+                  {ptsVals && (
+                    <div className="trend-card-pts">
+                      <span className="trend-card-pts-val" style={{ color: scoreColor(ptsVals[ptsVals.length - 1]) }}>
+                        {fmtSigned(ptsVals[ptsVals.length - 1])} pts
+                      </span>
+                      {dPts != null && (
+                        <span className="trend-delta" style={{ color: dPts > 0 ? '#22c55e' : dPts < 0 ? '#ef4444' : '#f59e0b' }}>
+                          {dPts > 0 ? '↑' : dPts < 0 ? '↓' : '→'} {parseFloat(Math.abs(dPts).toFixed(2))} pts
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
-        )
+          <table className="score-table">
+            <thead>
+              <tr><th>Month</th><th>CPD</th><th>GCR</th><th>QA</th><th>Total MIS</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={r.month}>
+                  <td style={{ whiteSpace: 'nowrap' }}>{fmtMonth(r.month)}</td>
+                  <td><div className="result-metric-cell"><span className="result-actual">{r.actuals.cpd.toFixed(2)}/day</span><span className="result-points" style={{ color: scoreColor(r.cpd) }}>{fmtSigned(r.cpd)} pts</span></div></td>
+                  <td><div className="result-metric-cell"><span className="result-actual">${r.actuals.gcr.toFixed(2)}/day</span><span className="result-points" style={{ color: scoreColor(r.gcr) }}>{fmtSigned(r.gcr)} pts</span></div></td>
+                  <td><div className="result-metric-cell"><span className="result-actual">{r.actuals.qa.toFixed(1)}%</span><span className="result-points" style={{ color: scoreColor(r.qa) }}>{fmtSigned(r.qa)} pts</span></div></td>
+                  <td style={{ color: scoreColor(r.total), fontWeight: 'bold' }}>{fmtSigned(r.total)}</td>
+                  <td><span className={`pass-badge small ${r.passing ? 'pass' : 'fail'}`}>{r.passing ? 'On Track' : 'Off Track'}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
       )}
     </div>
   )
@@ -249,14 +314,14 @@ export default function GuideView({ config }) {
     <div className="view-container">
       <div className="tabs">
         <button className={`tab-btn ${activeTab === 'calculator' ? 'active' : ''}`} onClick={() => setActiveTab('calculator')}>
-          My Calculator
+          Pacing Calculator
         </button>
         <button className={`tab-btn ${activeTab === 'lookup' ? 'active' : ''}`} onClick={() => setActiveTab('lookup')}>
-          My Published Score
+          History
         </button>
       </div>
 
-      {activeTab === 'lookup' && <ScoreLookup />}
+      {activeTab === 'lookup' && <HistoryPanel />}
 
       {activeTab === 'calculator' && (
         <>
