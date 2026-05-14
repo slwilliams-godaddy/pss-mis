@@ -437,11 +437,10 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
   const exportCSV = () => {
     const results = inputResults
     if (!results) return
-    const header = 'Name,Email,CPD (per day),CPD Points,GCR (per day),GCR Points,QA (%),QA Points,Total MIS,Status'
-    const rows = results.map((r, i) => {
+    const header = 'Name,CPD (per day),CPD Points,GCR (per day),GCR Points,QA (%),QA Points,Total MIS,Status'
+    const rows = results.map((r) => {
       if (!r) return ''
-      const email = inputGuides[i]?.email || ''
-      return `${r.name},${email},${r.actuals.cpd.toFixed(2)},${r.cpd},${r.actuals.gcr.toFixed(2)},${r.gcr},${r.actuals.qa.toFixed(1)}%,${r.qa},${r.total},${r.passing ? 'On Track' : 'Off Track'}`
+      return `${r.name},${r.actuals.cpd.toFixed(2)},${r.cpd},${r.actuals.gcr.toFixed(2)},${r.gcr},${r.actuals.qa.toFixed(1)}%,${r.qa},${r.total},${r.passing ? 'On Track' : 'Off Track'}`
     })
     const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
@@ -791,7 +790,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                     <thead>
                       <tr>
                         <th>Guide Name</th>
-                        <th>Email</th>
                         <th>Channel</th>
                         <th>CPD <span className="th-hint">target: {inputConfig.cpd?.target}/day</span></th>
                         <th>GCR <span className="th-hint th-hint-stack"><span>Voice: ${inputConfig.gcrVoice?.target}/day</span><span>Msg: ${inputConfig.gcrMessaging?.target}/day</span></span></th>
@@ -811,12 +809,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                               <div className="cell-col">
                                 <div className="cell-header" />
                                 <input value={g.name} onChange={e => handleGuideChange(i, 'name', e.target.value)} placeholder="Name" />
-                              </div>
-                            </td>
-                            <td>
-                              <div className="cell-col">
-                                <div className="cell-header" />
-                                <input type="email" value={g.email || ''} onChange={e => handleGuideChange(i, 'email', e.target.value)} placeholder="email@example.com" />
                               </div>
                             </td>
                             <td>
