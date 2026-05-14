@@ -236,6 +236,7 @@ function guideToRow(guide, month) {
     gcr: isNaN(gcr) ? null : gcr,
     qa: parseFloat(guide.qa) || null,
     accountable_days: isNaN(days) ? null : Math.round(days * 10) / 10,
+    published: true,
   }
   if (guide.id) row.id = guide.id
   return row

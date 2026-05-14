@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { calculateMIS } from '../utils/misCalculator'
 import {
-  getTeam, saveTeam, deleteGuideRow, publishMonth, clearMonthData,
+  getTeam, saveTeam, deleteGuideRow, clearMonthData,
   getArchivedMonths, getArchivedMonth,
   saveConfig,
   getSupervisorUsernames, addSupervisorUser, removeSupervisorUser, changeSupervisorPassword,
@@ -60,7 +60,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
   const [editingInputConfig, setEditingInputConfig] = useState(false)
   const [inputConfigDraft, setInputConfigDraft] = useState({ ...config })
   const [inputConfigMsg, setInputConfigMsg] = useState('')
-  const [publishMsg, setPublishMsg] = useState('')
   const [rosterPickMonth, setRosterPickMonth] = useState('')
   const [showRosterPicker, setShowRosterPicker] = useState(false)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
@@ -211,7 +210,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     userEdited.current = false
     setInputResults(null)
     setShowResetConfirm(false)
-    setPublishMsg('')
     setInputConfigMsg('')
     setEditingInputConfig(false)
     setShowRosterPicker(false)
@@ -292,15 +290,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     setInputResults(calcResults(inputGuides, inputConfig))
   }
 
-  const handlePublishMonth = async () => {
-    setPublishMsg('')
-    try {
-      await publishMonth(inputMonth)
-      setPublishMsg(`${fmtMonth(inputMonth)} scores published.`)
-      setTimeout(() => setPublishMsg(''), 4000)
-    } catch (err) { setPublishMsg(`Error: ${err.message}`) }
-  }
-
   const handleResetMonth = async () => {
     setShowResetConfirm(false)
     userEdited.current = false
@@ -308,9 +297,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
       await clearMonthData(inputMonth)
       await loadInputMonth(inputMonth)
       fetchArchivedMonths()
-    } catch (err) {
-      setPublishMsg(`Reset error: ${err.message}`)
-    }
+    } catch { /* ignore */ }
   }
 
   const handleSaveInputConfig = async (e) => {
@@ -886,10 +873,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                     ) : (
                       <button type="button" className="btn-ghost" onClick={() => setShowResetConfirm(true)}>Reset Month</button>
                     )}
-                    <button type="button" className="btn-secondary" onClick={handlePublishMonth}>
-                      Publish {fmtMonth(inputMonth)}
-                    </button>
-                    {publishMsg && <span className="close-month-msg">{publishMsg}</span>}
                   </div>
                 </div>
 
