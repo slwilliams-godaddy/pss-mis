@@ -260,6 +260,62 @@ export async function saveTeam(month, guides) {
   return guides
 }
 
+// ── Guides roster ─────────────────────────────────────────────────────────────
+
+export async function getGuides() {
+  const { data, error } = await supabase
+    .from('guides')
+    .select('*')
+    .order('name')
+  if (error) throw new Error(error.message)
+  return data
+}
+
+export async function getGuidesWithHistory() {
+  const [guidesResult, scoresResult] = await Promise.all([
+    supabase.from('guides').select('*').order('name'),
+    supabase.from('mis_scores').select('guide_name').neq('guide_name', ''),
+  ])
+  if (guidesResult.error) throw new Error(guidesResult.error.message)
+  if (scoresResult.error) throw new Error(scoresResult.error.message)
+  const namesWithHistory = new Set(scoresResult.data.map(r => r.guide_name))
+  return guidesResult.data.map(g => ({ ...g, hasHistory: namesWithHistory.has(g.name) }))
+}
+
+export async function addGuide({ name, channel }) {
+  const trimmedName = name.trim()
+  if (!trimmedName) throw new Error('Name is required.')
+  const { error } = await supabase
+    .from('guides')
+    .insert({ name: trimmedName, channel: channel || 'voice' })
+  if (error) {
+    if (error.code === '23505') throw new Error('A guide with that name already exists.')
+    throw new Error(error.message)
+  }
+  await ensureGuideCredentials([trimmedName])
+}
+
+export async function updateGuide(name, updates) {
+  const { error } = await supabase
+    .from('guides')
+    .update(updates)
+    .eq('name', name)
+  if (error) throw new Error(error.message)
+}
+
+export async function deleteGuide(name) {
+  const { data, error } = await supabase
+    .from('mis_scores')
+    .select('id')
+    .eq('guide_name', name)
+    .limit(1)
+  if (error) throw new Error(error.message)
+  if (data.length > 0) throw new Error('Cannot remove a guide with historical data. Deactivate them instead.')
+  await supabase.from('guide_credentials').delete().eq('guide_name', name)
+  const { error: deleteError } = await supabase.from('guides').delete().eq('name', name)
+  if (deleteError) throw new Error(deleteError.message)
+}
+
 export async function deleteGuideRow(id) {
   const { error } = await supabase.from('mis_scores').delete().eq('id', id)
   if (error) throw new Error(error.message)

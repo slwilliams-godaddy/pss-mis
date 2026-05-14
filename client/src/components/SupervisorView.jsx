@@ -5,6 +5,7 @@ import {
   getArchivedMonths, getArchivedMonth,
   saveConfig,
   getSupervisorUsernames, addSupervisorUser, removeSupervisorUser, changeSupervisorPassword,
+  getGuides, getGuidesWithHistory, addGuide, updateGuide, deleteGuide,
 } from '../utils/storage'
 
 const EMPTY_GUIDE = { name: '', email: '', channel: 'voice', cpdMode: 'perday', cpd: '', gcrMode: 'perday', gcr: '', qa: '', days: '' }
@@ -87,6 +88,17 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
   const [newUsername, setNewUsername] = useState('')
   const [newUserPw, setNewUserPw] = useState('')
   const [addUserMsg, setAddUserMsg] = useState(null)
+
+  // Manage Team tab
+  const [teamGuides, setTeamGuides] = useState(null)
+  const [teamLoading, setTeamLoading] = useState(false)
+  const [teamError, setTeamError] = useState('')
+  const [editingGuideName, setEditingGuideName] = useState(null)
+  const [editDraft, setEditDraft] = useState({})
+  const [editGuideMsg, setEditGuideMsg] = useState(null)
+  const [addGuideName, setAddGuideName] = useState('')
+  const [addGuideChannel, setAddGuideChannel] = useState('voice')
+  const [addGuideMsg, setAddGuideMsg] = useState(null)
 
   const handleChangePassword = async (e) => {
     e.preventDefault()
@@ -337,15 +349,89 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     } catch { /* ignore */ }
   }
 
-  const handleRemoveGuide = async (i) => {
+  const handleRemoveGuide = (i) => {
     if (inputGuides.length === 1) return
     const guide = inputGuides[i]
-    if (guide.id) {
-      try { await deleteGuideRow(guide.id) } catch { /* best effort */ }
-    }
     markEdited()
     setInputGuides(inputGuides.filter((_, idx) => idx !== i))
     setInputResults(null)
+    if (guide.id) deleteGuideRow(guide.id).catch(() => {})
+  }
+
+  const handleLoadActiveGuides = async () => {
+    try {
+      const guides = await getGuides()
+      const active = guides.filter(g => g.active)
+      if (!active.length) return
+      markEdited()
+      setInputGuides(active.map(g => ({ ...EMPTY_GUIDE, name: g.name, email: g.email || '', channel: g.channel || 'voice' })))
+      setInputResults(null)
+      setShowRosterPicker(false)
+    } catch { /* ignore */ }
+  }
+
+  // Manage Team handlers
+  const loadTeamGuides = async () => {
+    setTeamLoading(true)
+    setTeamError('')
+    try {
+      const guides = await getGuidesWithHistory()
+      setTeamGuides(guides)
+    } catch (err) {
+      setTeamError(err.message)
+    }
+    setTeamLoading(false)
+  }
+
+  useEffect(() => {
+    if (tab === 'manage-team' && teamGuides === null) loadTeamGuides()
+  }, [tab])
+
+  const handleAddGuide = async (e) => {
+    e.preventDefault()
+    setAddGuideMsg(null)
+    const trimmed = addGuideName.trim()
+    try {
+      await addGuide({ name: trimmed, channel: addGuideChannel })
+      setAddGuideName('')
+      setAddGuideChannel('voice')
+      setAddGuideMsg({ ok: true, text: `${trimmed} added.` })
+      setTimeout(() => setAddGuideMsg(null), 3000)
+      await loadTeamGuides()
+    } catch (err) {
+      setAddGuideMsg({ ok: false, text: err.message })
+    }
+  }
+
+  const handleSaveEditGuide = async (guide) => {
+    setEditGuideMsg(null)
+    try {
+      await updateGuide(guide.name, editDraft)
+      setEditingGuideName(null)
+      setEditDraft({})
+      await loadTeamGuides()
+    } catch (err) {
+      setEditGuideMsg({ ok: false, text: err.message })
+    }
+  }
+
+  const handleToggleActive = async (guide) => {
+    try {
+      await updateGuide(guide.name, { active: !guide.active })
+      await loadTeamGuides()
+    } catch (err) {
+      setTeamError(err.message)
+    }
+  }
+
+  const handleDeleteGuide = async (guide) => {
+    setTeamError('')
+    try {
+      await deleteGuide(guide.name)
+      await loadTeamGuides()
+    } catch (err) {
+      setTeamError(err.message)
+    }
   }
 
   const exportCSV = () => {
@@ -483,7 +569,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
       )}
 
       <div className="tabs">
-        {[['input', 'Input'], ['team-trend', 'Team Trend'], ['trend', 'Guide Trend']].map(([t, label]) => (
+        {[['input', 'Input'], ['team-trend', 'Team Trend'], ['trend', 'Guide Trend'], ['manage-team', 'Manage Team']].map(([t, label]) => (
           <button
             key={t}
             className={`tab-btn ${tab === t ? 'active' : ''}`}
@@ -613,22 +699,30 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
               </div>
 
               {/* Roster picker (when month has no named guides yet) */}
-              {showRosterPicker && (archivedMonths || []).filter(m => m !== config.month).length > 0 && (
+              {showRosterPicker && (
                 <div className="new-month-banner">
-                  <span>Import guide names from a previous month?</span>
+                  <span>Start this month with…</span>
                   <div className="new-month-controls">
-                    <select
-                      value={rosterPickMonth}
-                      onChange={e => setRosterPickMonth(e.target.value)}
-                    >
-                      <option value="">— select month —</option>
-                      {(archivedMonths || []).filter(m => m !== config.month).map(m => (
-                        <option key={m} value={m}>{fmtMonth(m)}</option>
-                      ))}
-                    </select>
-                    <button type="button" className="btn-secondary" disabled={!rosterPickMonth} onClick={() => handleLoadRoster(rosterPickMonth)}>
-                      Import Names
+                    <button type="button" className="btn-secondary" onClick={handleLoadActiveGuides}>
+                      Active Guides
                     </button>
+                    {(archivedMonths || []).filter(m => m !== config.month).length > 0 && (
+                      <>
+                        <span className="cfg-sep">or import from</span>
+                        <select
+                          value={rosterPickMonth}
+                          onChange={e => setRosterPickMonth(e.target.value)}
+                        >
+                          <option value="">— previous month —</option>
+                          {(archivedMonths || []).filter(m => m !== config.month).map(m => (
+                            <option key={m} value={m}>{fmtMonth(m)}</option>
+                          ))}
+                        </select>
+                        <button type="button" className="btn-secondary" disabled={!rosterPickMonth} onClick={() => handleLoadRoster(rosterPickMonth)}>
+                          Import Names
+                        </button>
+                      </>
+                    )}
                     <button type="button" className="btn-ghost" onClick={() => setShowRosterPicker(false)}>
                       Start Fresh
                     </button>
@@ -903,6 +997,126 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
               </>
             )
           })()}
+        </div>
+      )}
+
+      {/* ── MANAGE TEAM TAB ── */}
+      {tab === 'manage-team' && (
+        <div className="manage-team-tab">
+          {teamLoading && <p className="subtext">Loading…</p>}
+          {teamError && <p className="manage-team-error">{teamError}</p>}
+
+          {!teamLoading && teamGuides !== null && (
+            <>
+              <div className="manage-team-table-wrap">
+                <table className="manage-team-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Channel</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {teamGuides.length === 0 && (
+                      <tr><td colSpan={4} className="invalid-row">No guides on the team yet.</td></tr>
+                    )}
+                    {teamGuides.map(guide => (
+                      <tr key={guide.name} className={guide.active ? '' : 'guide-inactive-row'}>
+                        {editingGuideName === guide.name ? (
+                          <>
+                            <td><span className="guide-name-cell">{guide.name}</span></td>
+                            <td>
+                              <select
+                                value={editDraft.channel ?? guide.channel}
+                                onChange={e => setEditDraft({ ...editDraft, channel: e.target.value })}
+                              >
+                                <option value="voice">Voice</option>
+                                <option value="messaging">Messaging</option>
+                              </select>
+                            </td>
+                            <td>
+                              <span className={`guide-status-badge ${guide.active ? 'active' : 'inactive'}`}>
+                                {guide.active ? 'Active' : 'Inactive'}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="manage-guide-actions">
+                                <button className="btn-primary btn-sm" onClick={() => handleSaveEditGuide(guide)}>Save</button>
+                                <button className="btn-ghost btn-sm" onClick={() => { setEditingGuideName(null); setEditDraft({}); setEditGuideMsg(null) }}>Cancel</button>
+                                {editGuideMsg && <span className={editGuideMsg.ok ? 'close-month-msg' : 'close-month-msg error-msg'}>{editGuideMsg.text}</span>}
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td><span className="guide-name-cell">{guide.name}</span></td>
+                            <td>{guide.channel === 'messaging' ? 'Messaging' : 'Voice'}</td>
+                            <td>
+                              <span className={`guide-status-badge ${guide.active ? 'active' : 'inactive'}`}>
+                                {guide.active ? 'Active' : 'Inactive'}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="manage-guide-actions">
+                                <button
+                                  className="btn-ghost btn-sm"
+                                  onClick={() => { setEditingGuideName(guide.name); setEditDraft({ channel: guide.channel }); setEditGuideMsg(null) }}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  className="btn-ghost btn-sm"
+                                  onClick={() => handleToggleActive(guide)}
+                                >
+                                  {guide.active ? 'Deactivate' : 'Reactivate'}
+                                </button>
+                                {!guide.hasHistory && (
+                                  <button
+                                    className="btn-danger-sm"
+                                    onClick={() => handleDeleteGuide(guide)}
+                                  >
+                                    Remove
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="manage-team-add">
+                <h4>Add Guide</h4>
+                <form onSubmit={handleAddGuide} className="manage-add-form">
+                  <input
+                    type="text"
+                    placeholder="Guide name"
+                    value={addGuideName}
+                    onChange={e => setAddGuideName(e.target.value)}
+                    required
+                  />
+                  <select value={addGuideChannel} onChange={e => setAddGuideChannel(e.target.value)}>
+                    <option value="voice">Voice</option>
+                    <option value="messaging">Messaging</option>
+                  </select>
+                  <button type="submit" className="btn-primary">Add Guide</button>
+                  {addGuideMsg && (
+                    <span className={addGuideMsg.ok ? 'close-month-msg' : 'close-month-msg error-msg'}>
+                      {addGuideMsg.text}
+                    </span>
+                  )}
+                </form>
+                <p className="subtext" style={{ marginTop: '0.5rem' }}>
+                  New guides are created with the default password "changeme".
+                </p>
+              </div>
+            </>
+          )}
         </div>
       )}
 
