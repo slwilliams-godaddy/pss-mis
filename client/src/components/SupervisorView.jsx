@@ -1005,7 +1005,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                   <thead>
                     <tr>
                       <th>Name</th>
-                      <th>Channel</th>
+                      <th>Default Channel <span className="th-hint">per-month override in Input tab</span></th>
                       <th>Status</th>
                       <th>Actions</th>
                     </tr>
