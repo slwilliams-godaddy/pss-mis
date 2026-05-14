@@ -698,14 +698,36 @@ input:focus { outline: none; border-color: var(--blue); }
 .cfg-sep { color: var(--border); }
 .cfg-hint { font-size: 0.72rem; color: var(--text-muted); margin-left: 0.25rem; }
 
-.history-config-form { display: flex; flex-direction: column; gap: 0.6rem; }
-.history-config-edit-row { display: grid; grid-template-columns: 9rem repeat(3, 80px); align-items: end; gap: 0.75rem; }
-.history-config-edit-row .history-config-metric-label { align-self: center; }
-.history-config-edit-row .month-selects { grid-column: 2 / -1; }
-.history-config-field { display: flex; flex-direction: column; gap: 0.2rem; }
-.history-config-field span { font-size: 0.72rem; color: var(--text-muted); text-transform: capitalize; }
-.history-config-field input { width: 80px; }
-.history-config-form-actions { display: flex; align-items: center; gap: 0.75rem; padding-top: 0.25rem; }
+.targets-month-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; }
+.targets-month-label { font-size: 0.82rem; color: var(--text-muted); min-width: 4rem; }
+
+.targets-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.targets-table th {
+  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0 0.75rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+.targets-table td { padding: 0.45rem 0.75rem; }
+.targets-metric-name { color: var(--text-muted); font-size: 0.85rem; }
+.targets-val { color: var(--text-muted); }
+.targets-val-target { color: var(--text); font-weight: 600; }
+.targets-input {
+  width: 72px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.85rem;
+  padding: 0.3rem 0.5rem;
+  text-align: right;
+}
+.targets-input:focus { outline: none; border-color: var(--blue); }
+.targets-form-actions { display: flex; align-items: center; gap: 0.75rem; padding-top: 0.75rem; }
 
 .history-averages { display: flex; gap: 1.25rem; flex-wrap: wrap; align-items: flex-start; }
 .hist-avg-stat { display: flex; flex-direction: column; gap: 0.2rem; }

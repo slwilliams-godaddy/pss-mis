@@ -578,10 +578,10 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                   )}
                 </div>
                 {editingInputConfig ? (
-                  <form onSubmit={handleSaveInputConfig} className="history-config-form">
+                  <form onSubmit={handleSaveInputConfig}>
                     {isCurrentMonth && (
-                      <div className="history-config-edit-row">
-                        <span className="history-config-metric-label">Month</span>
+                      <div className="targets-month-row">
+                        <span className="targets-month-label">Month</span>
                         <div className="month-selects">
                           <select
                             value={inputConfigDraft.month ? inputConfigDraft.month.split('-')[1] : ''}
@@ -612,52 +612,69 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                         </div>
                       </div>
                     )}
-                    {CONFIG_METRICS.map(({ key, label }) => (
-                      <div key={key} className="history-config-edit-row">
-                        <span className="history-config-metric-label">{label}</span>
-                        {['min', 'target', 'max'].map(field => (
-                          <label key={field} className="history-config-field">
-                            <span>{field}</span>
-                            <input
-                              type="number"
-                              value={inputConfigDraft[key]?.[field] ?? ''}
-                              onChange={e => setInputConfigDraft({
-                                ...inputConfigDraft,
-                                [key]: { ...inputConfigDraft[key], [field]: parseFloat(e.target.value) || e.target.value }
-                              })}
-                              step="0.01"
-                              required
-                            />
-                          </label>
+                    <table className="targets-table">
+                      <thead>
+                        <tr>
+                          <th>Metric</th>
+                          <th>Min</th>
+                          <th>Target</th>
+                          <th>Max</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {CONFIG_METRICS.map(({ key, label }) => (
+                          <tr key={key}>
+                            <td className="targets-metric-name">{label}</td>
+                            {['min', 'target', 'max'].map(field => (
+                              <td key={field}>
+                                <input
+                                  type="number"
+                                  className="targets-input"
+                                  value={inputConfigDraft[key]?.[field] ?? ''}
+                                  onChange={e => setInputConfigDraft({
+                                    ...inputConfigDraft,
+                                    [key]: { ...inputConfigDraft[key], [field]: parseFloat(e.target.value) || e.target.value }
+                                  })}
+                                  step="0.01"
+                                  required
+                                />
+                              </td>
+                            ))}
+                          </tr>
                         ))}
-                      </div>
-                    ))}
-                    <div className="history-config-form-actions">
-                      <button type="submit" className="btn-primary">Save Config</button>
+                      </tbody>
+                    </table>
+                    <div className="targets-form-actions">
+                      <button type="submit" className="btn-primary">Save</button>
                       <button type="button" className="btn-ghost" onClick={() => { setEditingInputConfig(false); setInputConfigDraft({ ...inputConfig }); setInputConfigMsg('') }}>Cancel</button>
                       {inputConfigMsg && <span className="close-month-msg">{inputConfigMsg}</span>}
                     </div>
                   </form>
                 ) : (
-                  <div className="history-config-display">
-                    {CONFIG_METRICS.map(({ key, label, prefix, suffix }) => {
-                      const c = inputConfig[key]
-                      if (!c) return null
-                      return (
-                        <div key={key} className="history-config-row">
-                          <span className="history-config-metric-label">{label}</span>
-                          <span className="history-config-threshold">
-                            <span className="cfg-muted">{prefix}{c.min}{suffix}</span>
-                            <span className="cfg-sep">·</span>
-                            <span className="cfg-target">{prefix}{c.target}{suffix}</span>
-                            <span className="cfg-sep">·</span>
-                            <span className="cfg-muted">{prefix}{c.max}{suffix}</span>
-                          </span>
-                          <span className="cfg-hint">min · target · max</span>
-                        </div>
-                      )
-                    })}
-                  </div>
+                  <table className="targets-table">
+                    <thead>
+                      <tr>
+                        <th>Metric</th>
+                        <th>Min</th>
+                        <th>Target</th>
+                        <th>Max</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {CONFIG_METRICS.map(({ key, label, prefix, suffix }) => {
+                        const c = inputConfig[key]
+                        if (!c) return null
+                        return (
+                          <tr key={key}>
+                            <td className="targets-metric-name">{label}</td>
+                            <td className="targets-val">{prefix}{c.min}{suffix}</td>
+                            <td className="targets-val targets-val-target">{prefix}{c.target}{suffix}</td>
+                            <td className="targets-val">{prefix}{c.max}{suffix}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
                 )}
               </div>
 
