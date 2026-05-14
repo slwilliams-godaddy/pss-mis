@@ -1,67 +1,75 @@
 import { supabase } from './supabase'
 import { calculateMIS } from './misCalculator'
 
+// ── Password hashing (Web Crypto SHA-256) ─────────────────────────────────────
+
+async function hashPassword(password) {
+  const data = new TextEncoder().encode(password)
+  const buf = await crypto.subtle.digest('SHA-256', data)
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
-export async function getSession() {
-  const { data: { session } } = await supabase.auth.getSession()
-  return session
-}
-
-export async function signIn(email, password) {
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+export async function checkUser(username, password) {
+  const hash = await hashPassword(password)
+  const { data, error } = await supabase
+    .from('supervisor_credentials')
+    .select('username')
+    .eq('username', username)
+    .eq('password_hash', hash)
+    .maybeSingle()
   if (error) throw new Error(error.message)
-  return data.session
+  return data !== null
 }
 
-export async function signOut() {
-  const { error } = await supabase.auth.signOut()
+export async function getSupervisorUsernames() {
+  const { data, error } = await supabase
+    .from('supervisor_credentials')
+    .select('username')
+    .order('username')
+  if (error) throw new Error(error.message)
+  return data.map(r => r.username)
+}
+
+export async function addSupervisorUser(username, password) {
+  const hash = await hashPassword(password)
+  const { error } = await supabase
+    .from('supervisor_credentials')
+    .insert({ username: username.trim(), password_hash: hash })
+  if (error) {
+    if (error.code === '23505') throw new Error('A user with that name already exists.')
+    throw new Error(error.message)
+  }
+}
+
+export async function removeSupervisorUser(username) {
+  const usernames = await getSupervisorUsernames()
+  if (usernames.length <= 1) throw new Error('Cannot remove the last supervisor.')
+  const { error } = await supabase
+    .from('supervisor_credentials')
+    .delete()
+    .eq('username', username)
   if (error) throw new Error(error.message)
 }
 
-export async function changePassword(currentPassword, newPassword) {
-  const session = await getSession()
-  if (!session) throw new Error('Not signed in.')
-  // Re-authenticate to verify current password
-  const { error: verifyError } = await supabase.auth.signInWithPassword({
-    email: session.user.email,
-    password: currentPassword,
-  })
-  if (verifyError) throw new Error('Current password is incorrect.')
+export async function changeSupervisorPassword(username, currentPassword, newPassword) {
   if (newPassword.trim().length < 4) throw new Error('Password must be at least 4 characters.')
-  const { error } = await supabase.auth.updateUser({ password: newPassword })
+  const currentHash = await hashPassword(currentPassword)
+  const { data, error } = await supabase
+    .from('supervisor_credentials')
+    .select('username')
+    .eq('username', username)
+    .eq('password_hash', currentHash)
+    .maybeSingle()
   if (error) throw new Error(error.message)
-}
-
-export async function sendOtp(email) {
-  const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: true } })
-  if (error) throw new Error(error.message)
-}
-
-export async function verifyOtp(email, token) {
-  const { data, error } = await supabase.auth.verifyOtp({ email, token, type: 'email' })
-  if (error) throw new Error(error.message)
-  return data.session
-}
-
-// ── Supervisors ───────────────────────────────────────────────────────────────
-
-export async function getSupervisors() {
-  const { data, error } = await supabase.from('supervisors').select('email').order('email')
-  if (error) throw new Error(error.message)
-  return data.map(r => r.email)
-}
-
-export async function addSupervisor(email) {
-  const { error } = await supabase.from('supervisors').insert({ email: email.trim().toLowerCase() })
-  if (error) throw new Error(error.message)
-}
-
-export async function removeSupervisor(email) {
-  const supervisors = await getSupervisors()
-  if (supervisors.length <= 1) throw new Error('Cannot remove the last supervisor.')
-  const { error } = await supabase.from('supervisors').delete().eq('email', email)
-  if (error) throw new Error(error.message)
+  if (!data) throw new Error('Current password is incorrect.')
+  const newHash = await hashPassword(newPassword)
+  const { error: updateError } = await supabase
+    .from('supervisor_credentials')
+    .update({ password_hash: newHash })
+    .eq('username', username)
+  if (updateError) throw new Error(updateError.message)
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -103,7 +111,6 @@ function configToRow(cfg) {
 }
 
 export async function getConfig() {
-  // Fetch the most recent config row (highest month value)
   const { data, error } = await supabase
     .from('mis_config')
     .select('*')
@@ -124,7 +131,6 @@ export async function saveConfig(config) {
 
 // ── Team / Scores ─────────────────────────────────────────────────────────────
 
-// Converts a DB row back to the guide input format used by SupervisorView
 function rowToGuide(row) {
   return {
     id: row.id,
@@ -178,20 +184,16 @@ export async function getTeam(month) {
 export async function saveTeam(month, guides) {
   if (!guides.length) return
   const rows = guides.map(g => guideToRow(g, month))
-
-  // Upsert rows that have an id, insert new ones
   const toUpsert = rows.filter(r => r.id)
   const toInsert = rows.filter(r => !r.id)
-
   if (toUpsert.length) {
     const { error } = await supabase.from('mis_scores').upsert(toUpsert, { onConflict: 'id' })
     if (error) throw new Error(error.message)
   }
   if (toInsert.length) {
-    const { data, error } = await supabase.from('mis_scores').insert(toInsert).select('id, guide_email')
+    const { data, error } = await supabase.from('mis_scores').insert(toInsert).select('id')
     if (error) throw new Error(error.message)
-    // Assign new ids back to guides
-    data.forEach((row, i) => { guides[i].id = row.id })
+    data.forEach((row, i) => { guides[toUpsert.length + i].id = row.id })
   }
 }
 
@@ -252,13 +254,7 @@ function scoresToArchiveData(month, rows, config) {
       ...calculateMIS(actuals, { ...config, gcr: gcrCfg }),
     }
   })
-  return {
-    month,
-    guides,
-    results,
-    averages: computeAverages(results),
-    config,
-  }
+  return { month, guides, results, averages: computeAverages(results), config }
 }
 
 export async function getArchivedMonth(month) {
@@ -274,31 +270,27 @@ export async function getArchivedMonth(month) {
 
 export async function upsertArchivedMonth(month, { guides, config }) {
   if (!guides || !guides.length) return null
-
-  // Delete existing closed rows for this month and re-insert
   const { error: delError } = await supabase
     .from('mis_scores')
     .delete()
     .eq('month', month)
     .eq('month_closed', true)
   if (delError) throw new Error(delError.message)
-
   const rows = guides.map(g => guideToRow(g, month, { monthClosed: true, published: true }))
   const { data, error } = await supabase.from('mis_scores').insert(rows).select('*')
   if (error) throw new Error(error.message)
-
   if (config) await saveConfig(config)
-
   const savedConfig = config || await getConfig()
   return scoresToArchiveData(month, data, savedConfig)
 }
 
-// ── Guide score lookup ────────────────────────────────────────────────────────
+// ── Guide score lookup (public — no auth required) ────────────────────────────
 
-export async function getMyPublishedScores() {
+export async function getPublishedScoresForEmail(email) {
   const { data, error } = await supabase
     .from('mis_scores')
     .select('*')
+    .eq('guide_email', email.trim().toLowerCase())
     .eq('published', true)
     .order('month', { ascending: false })
   if (error) throw new Error(error.message)

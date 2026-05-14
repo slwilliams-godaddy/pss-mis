@@ -2,29 +2,18 @@ import { useState, useEffect } from 'react'
 import GuideView from './components/GuideView'
 import SupervisorView from './components/SupervisorView'
 import PasswordGate from './components/PasswordGate'
-import { supabase } from './utils/supabase'
-import { getConfig, saveConfig, signOut } from './utils/storage'
+import { getConfig, saveConfig } from './utils/storage'
 import './App.css'
+
+const SESSION_KEY = 'pss-mis:supervisor'
 
 export default function App() {
   const [role, setRole] = useState(null)
   const [showAbout, setShowAbout] = useState(false)
-  const [supervisorSession, setSupervisorSession] = useState(null)
+  const [supervisorUser, setSupervisorUser] = useState(() => sessionStorage.getItem(SESSION_KEY))
   const [config, setConfig] = useState(null)
   const [configLoading, setConfigLoading] = useState(true)
 
-  // Restore supervisor session on mount and listen for auth changes
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) setSupervisorSession(session)
-    })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSupervisorSession(session)
-    })
-    return () => subscription.unsubscribe()
-  }, [])
-
-  // Load config from Supabase (accessible anonymously)
   useEffect(() => {
     getConfig()
       .then(cfg => { setConfig(cfg); setConfigLoading(false) })
@@ -36,9 +25,9 @@ export default function App() {
     setConfig(cfg)
   }
 
-  const handleLogOut = async () => {
-    await signOut()
-    setSupervisorSession(null)
+  const handleLogOut = () => {
+    sessionStorage.removeItem(SESSION_KEY)
+    setSupervisorUser(null)
     setRole(null)
   }
 
@@ -82,7 +71,6 @@ export default function App() {
           {showAbout && (
             <div className="mis-about-body">
 
-              {/* ── PURPOSE ── */}
               <div className="mis-about-section">
                 <h3>Purpose and Scope</h3>
                 <p>
@@ -100,7 +88,6 @@ export default function App() {
                 </p>
               </div>
 
-              {/* ── ACCOUNTABILITY ── */}
               <div className="mis-about-section">
                 <h3>Accountability Timeline</h3>
                 <p>
@@ -115,7 +102,6 @@ export default function App() {
                 </p>
               </div>
 
-              {/* ── PERFORMANCE DIMENSIONS ── */}
               <div className="mis-about-section">
                 <h3>Performance Dimensions</h3>
                 <p>
@@ -179,7 +165,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* ── SCORE CALCULATION ── */}
               <div className="mis-about-section">
                 <h3>Score Calculation</h3>
                 <p>
@@ -206,12 +191,10 @@ export default function App() {
                     <span className="mis-formula-expr">CPD points + GCR points + QA points</span>
                   </div>
                 </div>
-
                 <p>
                   Each metric's point value is rounded to the nearest hundredth before being added to the Total MIS.
                   The Total MIS is then independently rounded to the nearest hundredth as well.
                 </p>
-
                 <p>Each metric has a fixed point range that bounds how much it can contribute to or detract from the Total MIS:</p>
                 <table className="mis-rails-table">
                   <thead>
@@ -259,9 +242,7 @@ export default function App() {
                 </table>
 
                 <p className="mis-subsection-label">Example — Off Track</p>
-                <p className="mis-example-note">
-                  Same monthly thresholds as above.
-                </p>
+                <p className="mis-example-note">Same monthly thresholds as above.</p>
                 <table className="mis-example-table">
                   <thead>
                     <tr><th>Metric</th><th>Target</th><th>Result</th><th>Calculation</th><th>Points</th></tr>
@@ -295,7 +276,6 @@ export default function App() {
                 </p>
               </div>
 
-              {/* ── MINIMUM EXPECTATIONS ── */}
               <div className="mis-about-section">
                 <h3>Minimum Performance Expectations</h3>
                 <p>
@@ -321,7 +301,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* ── CONFIDENTIALITY ── */}
               <div className="mis-about-section">
                 <h3>Confidentiality and Appropriate Use</h3>
                 <p>
@@ -349,10 +328,13 @@ export default function App() {
     )
   }
 
-  if (role === 'supervisor' && !supervisorSession) {
+  if (role === 'supervisor' && !supervisorUser) {
     return (
       <PasswordGate
-        onSuccess={(session) => setSupervisorSession(session)}
+        onSuccess={(username) => {
+          sessionStorage.setItem(SESSION_KEY, username)
+          setSupervisorUser(username)
+        }}
       />
     )
   }
@@ -371,11 +353,7 @@ export default function App() {
       <main>
         {role === 'guide'
           ? <GuideView config={config} />
-          : <SupervisorView
-              config={config}
-              onConfigSave={handleConfigSave}
-              currentUser={supervisorSession?.user?.email}
-            />
+          : <SupervisorView config={config} onConfigSave={handleConfigSave} currentUser={supervisorUser} />
         }
       </main>
     </div>

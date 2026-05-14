@@ -2,8 +2,7 @@ import { useState } from 'react'
 import { calculateMIS, SCORE_RAILS } from '../utils/misCalculator'
 import ScoreGauge from './ScoreGauge'
 import MetricRow from './MetricRow'
-import { sendOtp, verifyOtp, getMyPublishedScores } from '../utils/storage'
-import { supabase } from '../utils/supabase'
+import { getPublishedScoresForEmail } from '../utils/storage'
 
 // ── Math helpers ────────────────────────────────────────────────────────────
 
@@ -107,148 +106,76 @@ const fmtSigned = (v) => { const n = parseFloat(Number(v).toFixed(2)); return (n
 const scoreColor = (s) => s > 0 ? '#22c55e' : s === 0 ? '#f59e0b' : '#ef4444'
 
 function ScoreLookup() {
-  const [step, setStep] = useState('email') // 'email' | 'code' | 'scores'
   const [email, setEmail] = useState('')
-  const [code, setCode] = useState('')
   const [scores, setScores] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const handleSendOtp = async (e) => {
+  const handleLookup = async (e) => {
     e.preventDefault()
     setError('')
     setLoading(true)
     try {
-      await sendOtp(email.trim())
-      setStep('code')
-    } catch (err) {
-      setError(err.message || 'Failed to send code. Check the email address and try again.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleVerifyCode = async (e) => {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
-    try {
-      await verifyOtp(email.trim(), code.trim())
-      const data = await getMyPublishedScores()
+      const data = await getPublishedScoresForEmail(email)
       setScores(data)
-      setStep('scores')
     } catch (err) {
-      setError(err.message || 'Invalid or expired code. Try again.')
+      setError(err.message || 'Something went wrong. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut()
-    setStep('email')
-    setEmail('')
-    setCode('')
-    setScores(null)
-    setError('')
-  }
-
-  if (step === 'email') {
-    return (
-      <div className="score-lookup-panel">
-        <p className="subtext">Enter your work email to receive a one-time code and view your published scores.</p>
-        <form onSubmit={handleSendOtp} className="input-form">
-          <label>
-            <div className="field-header"><span>Work Email</span></div>
-            <input
-              type="email"
-              value={email}
-              onChange={e => { setEmail(e.target.value); setError('') }}
-              placeholder="you@example.com"
-              required
-              autoFocus
-              disabled={loading}
-            />
-          </label>
-          {error && <p className="gate-error">{error}</p>}
-          <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? 'Sending…' : 'Send Code'}
-          </button>
-        </form>
-      </div>
-    )
-  }
-
-  if (step === 'code') {
-    return (
-      <div className="score-lookup-panel">
-        <p className="subtext">A 6-digit code was sent to <strong>{email}</strong>. Enter it below.</p>
-        <form onSubmit={handleVerifyCode} className="input-form">
-          <label>
-            <div className="field-header"><span>Verification Code</span></div>
-            <input
-              type="text"
-              value={code}
-              onChange={e => { setCode(e.target.value); setError('') }}
-              placeholder="123456"
-              maxLength={6}
-              required
-              autoFocus
-              disabled={loading}
-              inputMode="numeric"
-            />
-          </label>
-          {error && <p className="gate-error">{error}</p>}
-          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <button type="submit" className="btn-primary" disabled={loading}>
-              {loading ? 'Verifying…' : 'View My Scores'}
-            </button>
-            <button type="button" className="btn-ghost" onClick={() => { setStep('email'); setError('') }} disabled={loading}>
-              Back
-            </button>
-          </div>
-        </form>
-      </div>
-    )
-  }
-
-  // step === 'scores'
   return (
     <div className="score-lookup-panel">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <p className="subtext" style={{ margin: 0 }}>Showing published scores for <strong>{email}</strong></p>
-        <button className="btn-ghost" onClick={handleSignOut}>Sign Out</button>
-      </div>
-      {!scores || scores.length === 0 ? (
-        <p className="subtext">No published scores found for your email yet. Check back once your supervisor has published results.</p>
-      ) : (
-        <table className="score-table">
-          <thead>
-            <tr><th>Month</th><th>Channel</th><th>CPD</th><th>GCR</th><th>QA</th><th>Total MIS</th><th>Status</th></tr>
-          </thead>
-          <tbody>
-            {scores.map(row => {
-              const cpd = Number(row.cpd)
-              const gcr = Number(row.gcr)
-              const qa  = Number(row.qa)
-              return (
-                <tr key={row.id}>
-                  <td style={{ whiteSpace: 'nowrap' }}>{fmtMonth(row.month)}</td>
-                  <td>{row.channel === 'messaging' ? 'Messaging' : 'Voice'}</td>
-                  <td>{row.cpd != null ? `${cpd.toFixed(2)}/day` : '—'}</td>
-                  <td>{row.gcr != null ? `$${gcr.toFixed(2)}/day` : '—'}</td>
-                  <td>{row.qa != null ? `${qa.toFixed(1)}%` : '—'}</td>
-                  <td>—</td>
-                  <td>—</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+      <form onSubmit={handleLookup} className="input-form">
+        <label>
+          <div className="field-header"><span>Work Email</span></div>
+          <input
+            type="email"
+            value={email}
+            onChange={e => { setEmail(e.target.value); setScores(null); setError('') }}
+            placeholder="you@example.com"
+            required
+            autoFocus
+            disabled={loading}
+          />
+        </label>
+        {error && <p className="gate-error">{error}</p>}
+        <button type="submit" className="btn-primary" disabled={loading}>
+          {loading ? 'Looking up…' : 'Look Up My Scores'}
+        </button>
+      </form>
+
+      {scores !== null && (
+        scores.length === 0 ? (
+          <p className="subtext" style={{ marginTop: '1rem' }}>
+            No published scores found for <strong>{email}</strong>. Check back once your supervisor has published results.
+          </p>
+        ) : (
+          <div style={{ marginTop: '1.5rem' }}>
+            <p className="subtext">Published scores for <strong>{email}</strong>:</p>
+            <table className="score-table">
+              <thead>
+                <tr><th>Month</th><th>Channel</th><th>CPD</th><th>GCR</th><th>QA</th></tr>
+              </thead>
+              <tbody>
+                {scores.map(row => (
+                  <tr key={row.id}>
+                    <td style={{ whiteSpace: 'nowrap' }}>{fmtMonth(row.month)}</td>
+                    <td>{row.channel === 'messaging' ? 'Messaging' : 'Voice'}</td>
+                    <td>{row.cpd != null ? `${Number(row.cpd).toFixed(2)}/day` : '—'}</td>
+                    <td>{row.gcr != null ? `$${Number(row.gcr).toFixed(2)}/day` : '—'}</td>
+                    <td>{row.qa != null ? `${Number(row.qa).toFixed(1)}%` : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="subtext" style={{ marginTop: '0.75rem', fontSize: '0.8rem' }}>
+              Final MIS scores are calculated by your supervisor. Contact them if you have questions.
+            </p>
+          </div>
+        )
       )}
-      <p className="subtext" style={{ marginTop: '0.75rem', fontSize: '0.8rem' }}>
-        Final MIS scores are calculated and shown by your supervisor. Contact them if you have questions about your results.
-      </p>
     </div>
   )
 }

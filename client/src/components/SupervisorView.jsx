@@ -4,7 +4,7 @@ import {
   getTeam, saveTeam, deleteGuideRow, closeMonth,
   getArchivedMonths, getArchivedMonth, upsertArchivedMonth,
   saveConfig,
-  getSupervisors, addSupervisor, removeSupervisor, changePassword,
+  getSupervisorUsernames, addSupervisorUser, removeSupervisorUser, changeSupervisorPassword,
 } from '../utils/storage'
 
 const EMPTY_GUIDE = { name: '', email: '', channel: 'voice', cpdMode: 'perday', cpd: '', gcrMode: 'perday', gcr: '', qa: '', days: '' }
@@ -74,7 +74,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
   const [allArchiveData, setAllArchiveData] = useState(null)
 
   const [showSettings, setShowSettings] = useState(false)
-  const [supervisorEmails, setSupervisorEmails] = useState([])
+  const [supervisorUsers, setSupervisorUsers] = useState([])
   const [supervisorsLoading, setSupervisorsLoading] = useState(false)
 
   const [pwCurrent, setPwCurrent] = useState('')
@@ -82,14 +82,15 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
   const [pwConfirm, setPwConfirm] = useState('')
   const [pwMsg, setPwMsg] = useState(null)
 
-  const [newSupervisorEmail, setNewSupervisorEmail] = useState('')
-  const [addSupervisorMsg, setAddSupervisorMsg] = useState(null)
+  const [newUsername, setNewUsername] = useState('')
+  const [newUserPw, setNewUserPw] = useState('')
+  const [addUserMsg, setAddUserMsg] = useState(null)
 
   const handleChangePassword = async (e) => {
     e.preventDefault()
     if (pwNew !== pwConfirm) { setPwMsg({ ok: false, text: 'New passwords do not match.' }); return }
     try {
-      await changePassword(pwCurrent, pwNew)
+      await changeSupervisorPassword(currentUser, pwCurrent, pwNew)
       setPwCurrent(''); setPwNew(''); setPwConfirm('')
       setPwMsg({ ok: true, text: 'Password updated.' })
       setTimeout(() => setPwMsg(null), 3000)
@@ -98,27 +99,27 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     }
   }
 
-  const handleAddSupervisor = async (e) => {
+  const handleAddUser = async (e) => {
     e.preventDefault()
     try {
-      await addSupervisor(newSupervisorEmail.trim())
-      const emails = await getSupervisors()
-      setSupervisorEmails(emails)
-      setNewSupervisorEmail('')
-      setAddSupervisorMsg({ ok: true, text: `${newSupervisorEmail.trim()} added.` })
-      setTimeout(() => setAddSupervisorMsg(null), 3000)
+      await addSupervisorUser(newUsername.trim(), newUserPw)
+      const names = await getSupervisorUsernames()
+      setSupervisorUsers(names)
+      setNewUsername(''); setNewUserPw('')
+      setAddUserMsg({ ok: true, text: `${newUsername.trim()} added.` })
+      setTimeout(() => setAddUserMsg(null), 3000)
     } catch (err) {
-      setAddSupervisorMsg({ ok: false, text: err.message })
+      setAddUserMsg({ ok: false, text: err.message })
     }
   }
 
-  const handleRemoveSupervisor = async (email) => {
+  const handleRemoveUser = async (username) => {
     try {
-      await removeSupervisor(email)
-      const emails = await getSupervisors()
-      setSupervisorEmails(emails)
+      await removeSupervisorUser(username)
+      const names = await getSupervisorUsernames()
+      setSupervisorUsers(names)
     } catch (err) {
-      setAddSupervisorMsg({ ok: false, text: err.message })
+      setAddUserMsg({ ok: false, text: err.message })
     }
   }
 
@@ -127,8 +128,8 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     setPwMsg(null)
     setSupervisorsLoading(true)
     try {
-      const emails = await getSupervisors()
-      setSupervisorEmails(emails)
+      const names = await getSupervisorUsernames()
+      setSupervisorUsers(names)
     } catch { /* non-critical */ }
     setSupervisorsLoading(false)
   }
@@ -439,41 +440,47 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
 
             <div className="settings-divider" />
 
-            <h4>Supervisor Access</h4>
+            <h4>Supervisor Users</h4>
             {supervisorsLoading ? (
               <p className="subtext">Loading…</p>
             ) : (
               <ul className="user-list">
-                {supervisorEmails.map(email => (
-                  <li key={email} className="user-list-item">
-                    <span>{email}{email === currentUser && <span className="user-you"> (you)</span>}</span>
-                    {email !== currentUser && (
-                      <button className="btn-ghost user-remove-btn" onClick={() => handleRemoveSupervisor(email)}>Remove</button>
+                {supervisorUsers.map(u => (
+                  <li key={u} className="user-list-item">
+                    <span>{u}{u === currentUser && <span className="user-you"> (you)</span>}</span>
+                    {u !== currentUser && (
+                      <button className="btn-ghost user-remove-btn" onClick={() => handleRemoveUser(u)}>Remove</button>
                     )}
                   </li>
                 ))}
               </ul>
             )}
-            <form onSubmit={handleAddSupervisor} className="password-form">
+            <form onSubmit={handleAddUser} className="password-form">
               <label className="password-field">
-                <span>Email address</span>
+                <span>Username</span>
                 <input
-                  type="email"
-                  value={newSupervisorEmail}
-                  onChange={e => setNewSupervisorEmail(e.target.value)}
+                  type="text"
+                  value={newUsername}
+                  onChange={e => setNewUsername(e.target.value)}
                   required
                   autoComplete="off"
-                  placeholder="supervisor@example.com"
+                />
+              </label>
+              <label className="password-field">
+                <span>Password</span>
+                <input
+                  type="password"
+                  value={newUserPw}
+                  onChange={e => setNewUserPw(e.target.value)}
+                  required
+                  autoComplete="new-password"
                 />
               </label>
               <div className="password-actions">
-                <button type="submit" className="btn-secondary">Grant Access</button>
-                {addSupervisorMsg && <span className={addSupervisorMsg.ok ? 'close-month-msg' : 'close-month-msg error-msg'}>{addSupervisorMsg.text}</span>}
+                <button type="submit" className="btn-secondary">Add User</button>
+                {addUserMsg && <span className={addUserMsg.ok ? 'close-month-msg' : 'close-month-msg error-msg'}>{addUserMsg.text}</span>}
               </div>
             </form>
-            <p className="subtext" style={{ marginTop: '0.5rem' }}>
-              Adding an email grants supervisor access. The person must set up their own password via Supabase.
-            </p>
           </div>
         </div>
       )}
