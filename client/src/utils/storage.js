@@ -303,6 +303,15 @@ export async function updateGuide(name, updates) {
   if (error) throw new Error(error.message)
 }
 
+export async function resetGuidePassword(guideName) {
+  const hash = await hashPassword('changeme')
+  const { error } = await supabase
+    .from('guide_credentials')
+    .update({ password_hash: hash })
+    .eq('guide_name', guideName)
+  if (error) throw new Error(error.message)
+}
+
 export async function deleteGuide(name) {
   const { data, error } = await supabase
     .from('mis_scores')

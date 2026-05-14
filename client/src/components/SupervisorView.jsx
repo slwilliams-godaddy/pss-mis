@@ -5,7 +5,7 @@ import {
   getArchivedMonths, getArchivedMonth,
   saveConfig,
   getSupervisorUsernames, addSupervisorUser, removeSupervisorUser, changeSupervisorPassword,
-  getGuides, getGuidesWithHistory, addGuide, updateGuide, deleteGuide,
+  getGuides, getGuidesWithHistory, addGuide, updateGuide, deleteGuide, resetGuidePassword,
 } from '../utils/storage'
 
 const EMPTY_GUIDE = { name: '', email: '', channel: 'voice', cpdMode: 'perday', cpd: '', gcrMode: 'perday', gcr: '', qa: '', days: '' }
@@ -429,6 +429,15 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     try {
       await deleteGuide(guide.name)
       await loadTeamGuides()
+    } catch (err) {
+      setTeamError(err.message)
+    }
+  }
+
+  const handleResetGuidePassword = async (guide) => {
+    try {
+      await resetGuidePassword(guide.name)
+      setTeamError('')
     } catch (err) {
       setTeamError(err.message)
     }
@@ -1063,6 +1072,13 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                                   onClick={() => handleToggleActive(guide)}
                                 >
                                   {guide.active ? 'Deactivate' : 'Reactivate'}
+                                </button>
+                                <button
+                                  className="btn-ghost btn-sm"
+                                  onClick={() => handleResetGuidePassword(guide)}
+                                  title="Reset password to 'changeme'"
+                                >
+                                  Reset PW
                                 </button>
                                 {!guide.hasHistory && (
                                   <button
