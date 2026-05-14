@@ -570,10 +570,10 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
               {/* Config section */}
               <div className="history-section">
                 <div className="history-section-header">
-                  <h4>Config — {fmtMonth(inputMonth)}</h4>
+                  <h4>Targets — {fmtMonth(inputMonth)}</h4>
                   {!editingInputConfig && (
                     <button className="btn-ghost" onClick={() => { setEditingInputConfig(true); setInputConfigDraft({ ...inputConfig }); setInputConfigMsg('') }}>
-                      Edit Config
+                      Set Targets
                     </button>
                   )}
                 </div>
