@@ -418,22 +418,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
     }
   }
 
-  const exportCSV = () => {
-    if (!inputResults.some(Boolean)) return
-    const header = 'Name,CPD (per day),CPD Points,GCR (per day),GCR Points,QA (%),QA Points,Total MIS,Status'
-    const rows = inputResults.map((r) => {
-      if (!r) return ''
-      return `${r.name},${r.actuals.cpd.toFixed(2)},${r.cpd},${r.actuals.gcr.toFixed(2)},${r.gcr},${r.actuals.qa.toFixed(1)}%,${r.qa},${r.total},${r.passing ? 'On Track' : 'Off Track'}`
-    })
-    const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `Team_MIS_${inputMonth}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
   // Trend derived values — only use months that are not the current config month
   const trendMonths = Object.keys(allArchiveData || {}).filter(m => m !== config.month)
 
@@ -577,9 +561,6 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                 ))}
               </select>
             </label>
-            {inputResults.some(Boolean) && (
-              <button className="btn-secondary" onClick={exportCSV}>Export CSV</button>
-            )}
           </div>
 
           {inputLoading && <p className="subtext">Loading…</p>}
