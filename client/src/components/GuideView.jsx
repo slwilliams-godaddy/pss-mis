@@ -3,7 +3,7 @@ import { calculateMIS, SCORE_RAILS } from '../utils/misCalculator'
 import ScoreGauge from './ScoreGauge'
 import MetricRow from './MetricRow'
 import TechTitans from './TechTitans'
-import { getGuideHistory, checkGuide, getGuideNames, changeGuidePassword, getConfigMonths, getConfigForMonth } from '../utils/storage'
+import { getGuideHistory, changeGuidePassword, getConfigMonths, getConfigForMonth } from '../utils/storage'
 
 // ── Math helpers ────────────────────────────────────────────────────────────
 
@@ -130,71 +130,6 @@ function Sparkline({ values, color, width = 130, height = 40 }) {
   )
 }
 
-function GuideLoginGate({ onLogin }) {
-  const [guideNames, setGuideNames] = useState([])
-  const [guideName, setGuideName] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    getGuideNames().then(names => {
-      setGuideNames(names)
-      if (names.length === 1) setGuideName(names[0])
-    }).catch(() => {})
-  }, [])
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
-    try {
-      const ok = await checkGuide(guideName, password)
-      if (ok) {
-        onLogin(guideName)
-      } else {
-        setError('Incorrect name or password.')
-      }
-    } catch {
-      setError('Could not verify credentials. Please try again.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="password-gate">
-      <div className="password-card">
-        <h2>Guide Access</h2>
-        <p className="subtext" style={{ marginBottom: '1rem' }}>Log in to view your published scores.</p>
-        <form onSubmit={handleSubmit}>
-          <select
-            value={guideName}
-            onChange={e => { setGuideName(e.target.value); setError('') }}
-            required
-            autoFocus
-            disabled={loading}
-          >
-            <option value="" disabled>Select your name</option>
-            {guideNames.map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
-          <input
-            type="password"
-            value={password}
-            onChange={e => { setPassword(e.target.value); setError('') }}
-            placeholder="Password"
-            required
-            disabled={loading}
-          />
-          {error && <p className="gate-error">{error}</p>}
-          <button type="submit" className="btn-primary" disabled={loading || !guideName}>
-            {loading ? 'Checking…' : 'View My Scores'}
-          </button>
-        </form>
-      </div>
-    </div>
-  )
-}
 
 function HistoryPanel({ guideUser, onLogout }) {
   const [rows, setRows] = useState(null)
@@ -343,7 +278,7 @@ function HistoryPanel({ guideUser, onLogout }) {
 const MONTH_NAMES_CALC = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const fmtMonthCalc = (m) => { const [y, mm] = m.split('-'); return `${MONTH_NAMES_CALC[+mm - 1]} ${y}` }
 
-export default function GuideView({ config, guideUser, onGuideLogin, onGuideLogout }) {
+export default function GuideView({ config, guideUser, onGuideLogout }) {
   const [activeTab, setActiveTab] = useState('calculator')
   const [cpdMode, setCpdMode] = useState('perday')
   const [gcrMode, setGcrMode] = useState('perday')
@@ -439,9 +374,7 @@ export default function GuideView({ config, guideUser, onGuideLogin, onGuideLogo
       {activeTab === 'titans' && <TechTitans guideUser={guideUser} anonymize />}
 
       {activeTab === 'lookup' && (
-        guideUser
-          ? <HistoryPanel guideUser={guideUser} onLogout={onGuideLogout} />
-          : <GuideLoginGate onLogin={onGuideLogin} />
+        <HistoryPanel guideUser={guideUser} onLogout={onGuideLogout} />
       )}
 
       {activeTab === 'calculator' && (

@@ -2,8 +2,67 @@ import { useState, useEffect } from 'react'
 import GuideView from './components/GuideView'
 import SupervisorView from './components/SupervisorView'
 import PasswordGate from './components/PasswordGate'
-import { getConfig, saveConfig } from './utils/storage'
+import { getConfig, saveConfig, getGuideNames, checkGuide } from './utils/storage'
 import './App.css'
+
+function GuideLoginModal({ onSuccess, onClose }) {
+  const [guideNames, setGuideNames] = useState([])
+  const [guideName, setGuideName] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    getGuideNames().then(names => {
+      setGuideNames(names)
+      if (names.length === 1) setGuideName(names[0])
+    }).catch(() => {})
+  }, [])
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    try {
+      const ok = await checkGuide(guideName, password)
+      if (ok) { onSuccess(guideName) } else { setError('Incorrect name or password.') }
+    } catch {
+      setError('Could not verify credentials. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Guide Sign In</h2>
+          <button className="btn-ghost modal-close" onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit} className="modal-form">
+          <select value={guideName} onChange={e => { setGuideName(e.target.value); setError('') }} required disabled={loading}>
+            <option value="" disabled>Select your name</option>
+            {guideNames.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+          <input
+            type="password"
+            value={password}
+            onChange={e => { setPassword(e.target.value); setError('') }}
+            placeholder="Password"
+            required
+            disabled={loading}
+            autoFocus={false}
+          />
+          {error && <p className="gate-error">{error}</p>}
+          <button type="submit" className="btn-primary" disabled={loading || !guideName}>
+            {loading ? 'Checking…' : 'Sign In'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
 
 const SESSION_KEY = 'pss-mis:supervisor'
 const GUIDE_SESSION_KEY = 'pss-mis:guide'
@@ -11,6 +70,7 @@ const GUIDE_SESSION_KEY = 'pss-mis:guide'
 export default function App() {
   const [role, setRole] = useState(null)
   const [showAbout, setShowAbout] = useState(false)
+  const [showGuideLogin, setShowGuideLogin] = useState(false)
   const [supervisorUser, setSupervisorUser] = useState(() => sessionStorage.getItem(SESSION_KEY))
   const [guideUser, setGuideUser] = useState(() => sessionStorage.getItem(GUIDE_SESSION_KEY))
   const [config, setConfig] = useState(null)
@@ -41,6 +101,7 @@ export default function App() {
   const handleGuideLogout = () => {
     sessionStorage.removeItem(GUIDE_SESSION_KEY)
     setGuideUser(null)
+    setRole(null)
   }
 
   const handleSwitchRole = () => {
@@ -62,7 +123,7 @@ export default function App() {
         <h1>PSS Merchant Impact Score</h1>
         <p>Select your role to continue</p>
         <div className="role-buttons">
-          <button className="role-btn" onClick={() => setRole('guide')}>
+          <button className="role-btn" onClick={() => guideUser ? setRole('guide') : setShowGuideLogin(true)}>
             <span className="role-icon">👤</span>
             <span className="role-title">Guide</span>
             <span className="role-desc">View my MIS history and pacing calculator</span>
@@ -73,6 +134,13 @@ export default function App() {
             <span className="role-desc">Input scores and manage team</span>
           </button>
         </div>
+
+        {showGuideLogin && (
+          <GuideLoginModal
+            onSuccess={(name) => { handleGuideLogin(name); setRole('guide'); setShowGuideLogin(false) }}
+            onClose={() => setShowGuideLogin(false)}
+          />
+        )}
 
         <section className="mis-about">
           <button className="mis-about-toggle" onClick={() => setShowAbout(v => !v)}>
