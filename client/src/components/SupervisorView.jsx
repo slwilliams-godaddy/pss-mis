@@ -702,30 +702,26 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                       <thead>
                         <tr>
                           <th>Metric</th>
-                          <th>Min</th>
                           <th>Target</th>
-                          <th>Max</th>
                         </tr>
                       </thead>
                       <tbody>
                         {CONFIG_METRICS.map(({ key, label }) => (
                           <tr key={key}>
                             <td className="targets-metric-name">{label}</td>
-                            {['min', 'target', 'max'].map(field => (
-                              <td key={field}>
-                                <input
-                                  type="number"
-                                  className="targets-input"
-                                  value={inputConfigDraft[key]?.[field] ?? ''}
-                                  onChange={e => setInputConfigDraft({
-                                    ...inputConfigDraft,
-                                    [key]: { ...inputConfigDraft[key], [field]: parseFloat(e.target.value) || e.target.value }
-                                  })}
-                                  step="0.01"
-                                  required
-                                />
-                              </td>
-                            ))}
+                            <td>
+                              <input
+                                type="number"
+                                className="targets-input"
+                                value={inputConfigDraft[key]?.target ?? ''}
+                                onChange={e => setInputConfigDraft({
+                                  ...inputConfigDraft,
+                                  [key]: { ...inputConfigDraft[key], target: parseFloat(e.target.value) || e.target.value }
+                                })}
+                                step="0.01"
+                                required
+                              />
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -741,9 +737,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                     <thead>
                       <tr>
                         <th>Metric</th>
-                        <th>Min</th>
                         <th>Target</th>
-                        <th>Max</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -753,9 +747,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
                         return (
                           <tr key={key}>
                             <td className="targets-metric-name">{label}</td>
-                            <td className="targets-val">{prefix}{c.min}{suffix}</td>
                             <td className="targets-val targets-val-target">{prefix}{c.target}{suffix}</td>
-                            <td className="targets-val">{prefix}{c.max}{suffix}</td>
                           </tr>
                         )
                       })}

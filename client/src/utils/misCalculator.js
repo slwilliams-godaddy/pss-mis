@@ -1,30 +1,21 @@
+const MULTIPLIERS = { cpd: 1.5, gcr: 1.0, qa: 1.0 }
+
 const SCORE_RAILS = {
   cpd: { min: -35, max: 35 },
   gcr: { min: -20, max: 20 },
   qa:  { min: -20, max: 20 },
 }
 
-function scoreMetric(actual, config, rail) {
-  const { target, min, max } = config
-  const { min: railMin, max: railMax } = rail
-
-  if (actual >= target) {
-    const range = max - target
-    if (range === 0) return actual > target ? railMax : 0
-    const ratio = (actual - target) / range
-    return Math.min(railMax, ratio * railMax)
-  } else {
-    const range = target - min
-    if (range === 0) return railMin
-    const ratio = (target - actual) / range
-    return Math.max(railMin, -ratio * Math.abs(railMin))
-  }
+function scoreMetric(actual, target, rail, multiplier) {
+  if (!target) return 0
+  const raw = ((actual / target) - 1) * 100 * multiplier
+  return Math.min(rail.max, Math.max(rail.min, raw))
 }
 
 export function calculateMIS(actuals, config) {
-  const cpd = scoreMetric(actuals.cpd, config.cpd, SCORE_RAILS.cpd)
-  const gcr = scoreMetric(actuals.gcr, config.gcr, SCORE_RAILS.gcr)
-  const qa  = scoreMetric(actuals.qa,  config.qa,  SCORE_RAILS.qa)
+  const cpd = scoreMetric(actuals.cpd, config.cpd.target, SCORE_RAILS.cpd, MULTIPLIERS.cpd)
+  const gcr = scoreMetric(actuals.gcr, config.gcr.target, SCORE_RAILS.gcr, MULTIPLIERS.gcr)
+  const qa  = scoreMetric(actuals.qa,  config.qa.target,  SCORE_RAILS.qa,  MULTIPLIERS.qa)
   const total = cpd + gcr + qa
 
   return {
@@ -36,4 +27,4 @@ export function calculateMIS(actuals, config) {
   }
 }
 
-export { SCORE_RAILS }
+export { MULTIPLIERS, SCORE_RAILS }

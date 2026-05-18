@@ -180,23 +180,15 @@ export default function App() {
               <div className="mis-about-section">
                 <h3>Score Calculation</h3>
                 <p>
-                  Each metric is scored on a linear scale anchored to three monthly thresholds: a minimum, a target,
-                  and a maximum. Performing exactly at target earns 0 points. Performance above target earns positive
-                  points proportional to how close the result is to the maximum; performance below target loses points
-                  proportional to how close the result is to the minimum.
+                  Each metric is scored by measuring percentage deviation from its monthly target, then multiplying
+                  by a metric-specific weight. Performing exactly at target earns 0 points. Performance above target
+                  earns positive points; performance below target loses points. Each metric's score is capped at a
+                  fixed maximum and floored at a fixed minimum regardless of how far above or below target the result falls.
                 </p>
                 <div className="mis-formula-block">
                   <div className="mis-formula-row">
-                    <span className="mis-formula-label">At target</span>
-                    <span className="mis-formula-expr">0 points</span>
-                  </div>
-                  <div className="mis-formula-row">
-                    <span className="mis-formula-label">Above target</span>
-                    <span className="mis-formula-expr">((actual − target) ÷ (max − target)) × rail max &nbsp;[capped at rail max]</span>
-                  </div>
-                  <div className="mis-formula-row">
-                    <span className="mis-formula-label">Below target</span>
-                    <span className="mis-formula-expr">−((target − actual) ÷ (target − min)) × |rail min| &nbsp;[floored at rail min]</span>
+                    <span className="mis-formula-label">Per metric</span>
+                    <span className="mis-formula-expr">((actual ÷ target) − 1) × 100 × weight &nbsp;[clamped to rail]</span>
                   </div>
                   <div className="mis-formula-row mis-formula-total">
                     <span className="mis-formula-label">Total MIS</span>
@@ -207,24 +199,28 @@ export default function App() {
                   Each metric's point value is rounded to the nearest hundredth before being added to the Total MIS.
                   The Total MIS is then independently rounded to the nearest hundredth as well.
                 </p>
-                <p>Each metric has a fixed point range that bounds how much it can contribute to or detract from the Total MIS:</p>
+                <p>Each metric has a weight and a fixed point range:</p>
                 <table className="mis-rails-table">
                   <thead>
-                    <tr><th>Metric</th><th>Min Points</th><th>Max Points</th></tr>
+                    <tr><th>Metric</th><th>Weight</th><th>Min Points</th><th>Max Points</th></tr>
                   </thead>
                   <tbody>
-                    <tr><td>Contributions Per Day (CPD)</td><td>−35</td><td>+35</td></tr>
-                    <tr><td>Gross Cash Revenue Per Day (GCR)</td><td>−20</td><td>+20</td></tr>
-                    <tr><td>Quality Assurance (QA)</td><td>−20</td><td>+20</td></tr>
-                    <tr className="mis-rails-total"><td>Total MIS</td><td>−75</td><td>+75</td></tr>
+                    <tr><td>Contributions Per Day (CPD)</td><td>1.5×</td><td>−35</td><td>+35</td></tr>
+                    <tr><td>Gross Cash Revenue Per Day (GCR)</td><td>1.0×</td><td>−20</td><td>+20</td></tr>
+                    <tr><td>Quality Assurance (QA)</td><td>1.0×</td><td>−20</td><td>+20</td></tr>
+                    <tr className="mis-rails-total"><td>Total MIS</td><td></td><td>−75</td><td>+75</td></tr>
                   </tbody>
                 </table>
 
+                <p className="mis-example-note">
+                  The CPD weight of 1.5× means every 1% above or below the CPD target is worth 1.5 points,
+                  versus 1 point per 1% for GCR and QA. CPD can also contribute up to ±35 points compared
+                  to ±20 for the other metrics, giving it both a faster earn rate and a wider range.
+                </p>
+
                 <p className="mis-subsection-label">Example — On Track</p>
                 <p className="mis-example-note">
-                  Monthly thresholds: CPD min 14 / target 17 / max 20 &nbsp;·&nbsp;
-                  GCR min $40 / target $70 / max $100 &nbsp;·&nbsp;
-                  QA min 70% / target 85% / max 100%
+                  Monthly targets: CPD 17 &nbsp;·&nbsp; GCR $70 &nbsp;·&nbsp; QA 85%
                 </p>
                 <table className="mis-example-table">
                   <thead>
@@ -233,28 +229,28 @@ export default function App() {
                   <tbody>
                     <tr>
                       <td>CPD</td><td>17</td><td>19</td>
-                      <td className="mis-calc-cell">((19 − 17) ÷ (20 − 17)) × 35</td>
-                      <td className="mis-pts-pos">+23.33</td>
+                      <td className="mis-calc-cell">((19 ÷ 17) − 1) × 100 × 1.5</td>
+                      <td className="mis-pts-pos">+17.65</td>
                     </tr>
                     <tr>
                       <td>GCR</td><td>$70</td><td>$85</td>
-                      <td className="mis-calc-cell">((85 − 70) ÷ (100 − 70)) × 20</td>
-                      <td className="mis-pts-pos">+10.00</td>
+                      <td className="mis-calc-cell">((85 ÷ 70) − 1) × 100 × 1.0</td>
+                      <td className="mis-pts-pos">+21.43</td>
                     </tr>
                     <tr>
                       <td>QA</td><td>85%</td><td>92%</td>
-                      <td className="mis-calc-cell">((92 − 85) ÷ (100 − 85)) × 20</td>
-                      <td className="mis-pts-pos">+9.33</td>
+                      <td className="mis-calc-cell">((92 ÷ 85) − 1) × 100 × 1.0</td>
+                      <td className="mis-pts-pos">+8.24</td>
                     </tr>
                     <tr className="mis-example-total">
                       <td colSpan={4}>Total MIS</td>
-                      <td><span className="mis-status-on">+42.67 — On Track ✓</span></td>
+                      <td><span className="mis-status-on">+47.32 — On Track ✓</span></td>
                     </tr>
                   </tbody>
                 </table>
 
                 <p className="mis-subsection-label">Example — Off Track</p>
-                <p className="mis-example-note">Same monthly thresholds as above.</p>
+                <p className="mis-example-note">Same monthly targets as above.</p>
                 <table className="mis-example-table">
                   <thead>
                     <tr><th>Metric</th><th>Target</th><th>Result</th><th>Calculation</th><th>Points</th></tr>
@@ -262,29 +258,29 @@ export default function App() {
                   <tbody>
                     <tr>
                       <td>CPD</td><td>17</td><td>15</td>
-                      <td className="mis-calc-cell">−((17 − 15) ÷ (17 − 14)) × 35</td>
-                      <td className="mis-pts-neg">−23.33</td>
+                      <td className="mis-calc-cell">((15 ÷ 17) − 1) × 100 × 1.5</td>
+                      <td className="mis-pts-neg">−17.65</td>
                     </tr>
                     <tr>
                       <td>GCR</td><td>$70</td><td>$55</td>
-                      <td className="mis-calc-cell">−((70 − 55) ÷ (70 − 40)) × 20</td>
-                      <td className="mis-pts-neg">−10.00</td>
+                      <td className="mis-calc-cell">((55 ÷ 70) − 1) × 100 × 1.0</td>
+                      <td className="mis-pts-neg">−21.43</td>
                     </tr>
                     <tr>
                       <td>QA</td><td>85%</td><td>78%</td>
-                      <td className="mis-calc-cell">−((85 − 78) ÷ (85 − 70)) × 20</td>
-                      <td className="mis-pts-neg">−9.33</td>
+                      <td className="mis-calc-cell">((78 ÷ 85) − 1) × 100 × 1.0</td>
+                      <td className="mis-pts-neg">−8.24</td>
                     </tr>
                     <tr className="mis-example-total">
                       <td colSpan={4}>Total MIS</td>
-                      <td><span className="mis-status-off">−42.67 — Off Track ✗</span></td>
+                      <td><span className="mis-status-off">−47.32 — Off Track ✗</span></td>
                     </tr>
                   </tbody>
                 </table>
 
                 <p className="mis-example-note">
-                  Results at or below the minimum threshold are floored at the rail minimum; results at or above
-                  the maximum threshold are capped at the rail maximum.
+                  Scores are clamped to the rail for each metric regardless of how far above or below
+                  target actual performance falls.
                 </p>
               </div>
 
