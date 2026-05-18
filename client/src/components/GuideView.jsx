@@ -435,7 +435,7 @@ export default function GuideView({ config, guideUser, onGuideLogin, onGuideLogo
         </button>
       </div>
 
-      {activeTab === 'titans' && <TechTitans guideUser={guideUser} />}
+      {activeTab === 'titans' && <TechTitans guideUser={guideUser} anonymize />}
 
       {activeTab === 'lookup' && (
         guideUser

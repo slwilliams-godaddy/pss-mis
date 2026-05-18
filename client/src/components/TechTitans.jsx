@@ -23,7 +23,7 @@ function rankLabel(i) {
 const fmtScore = (v) => (v > 0 ? '+' : '') + v
 const scoreColor = (v) => v > 0 ? '#22c55e' : v < 0 ? '#ef4444' : '#f59e0b'
 
-export default function TechTitans({ guideUser }) {
+export default function TechTitans({ guideUser, anonymize = false }) {
   const now = new Date()
   const curYear = now.getFullYear()
   const curQ = Math.ceil((now.getMonth() + 1) / 3)
@@ -104,10 +104,11 @@ export default function TechTitans({ guideUser }) {
                 <tbody>
                   {data.map((guide, idx) => {
                     const isMe = guideUser && guide.name === guideUser
+                    const showName = !anonymize || idx < 3
                     return (
                       <tr key={guide.name} className={`tt-row${isMe ? ' tt-row-me' : ''}`}>
                         <td className="tt-rank">{rankLabel(idx)}</td>
-                        <td className="tt-name">{guide.name}</td>
+                        <td className="tt-name">{showName ? guide.name : <span className="tt-anon">—</span>}</td>
                         {months.map(m => {
                           const ms = guide.months[m]
                           return (
