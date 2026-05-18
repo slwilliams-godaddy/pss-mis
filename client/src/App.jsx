@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import GuideView from './components/GuideView'
 import SupervisorView from './components/SupervisorView'
 import PasswordGate from './components/PasswordGate'
-import { getConfig, saveConfig, getGuideNames, checkGuide } from './utils/storage'
+import { getConfig, saveConfig, getGuideNames, checkGuide, changeGuidePassword } from './utils/storage'
 import './App.css'
 
 function GuideLoginModal({ onSuccess, onClose }) {
@@ -67,6 +67,58 @@ function GuideLoginModal({ onSuccess, onClose }) {
   )
 }
 
+function GuideSettingsModal({ guideUser, onClose }) {
+  const [pwCurrent, setPwCurrent] = useState('')
+  const [pwNew, setPwNew] = useState('')
+  const [pwConfirm, setPwConfirm] = useState('')
+  const [pwMsg, setPwMsg] = useState(null)
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (pwNew !== pwConfirm) { setPwMsg({ ok: false, text: 'New passwords do not match.' }); return }
+    try {
+      await changeGuidePassword(guideUser, pwCurrent, pwNew)
+      setPwCurrent(''); setPwNew(''); setPwConfirm('')
+      setPwMsg({ ok: true, text: 'Password updated.' })
+      setTimeout(() => setPwMsg(null), 3000)
+    } catch (err) {
+      setPwMsg({ ok: false, text: err.message })
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <h2>Settings</h2>
+            <p>Change your password</p>
+          </div>
+          <button className="btn-ghost modal-close" onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit} className="password-form">
+          <label className="password-field">
+            <span>Current password</span>
+            <input type="password" value={pwCurrent} onChange={e => setPwCurrent(e.target.value)} required autoComplete="current-password" />
+          </label>
+          <label className="password-field">
+            <span>New password</span>
+            <input type="password" value={pwNew} onChange={e => setPwNew(e.target.value)} required autoComplete="new-password" />
+          </label>
+          <label className="password-field">
+            <span>Confirm new password</span>
+            <input type="password" value={pwConfirm} onChange={e => setPwConfirm(e.target.value)} required autoComplete="new-password" />
+          </label>
+          <div className="password-actions">
+            <button type="submit" className="btn-primary">Update Password</button>
+            {pwMsg && <span className={pwMsg.ok ? 'close-month-msg' : 'close-month-msg error-msg'}>{pwMsg.text}</span>}
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 const SESSION_KEY = 'pss-mis:supervisor'
 const GUIDE_SESSION_KEY = 'pss-mis:guide'
 
@@ -75,6 +127,7 @@ export default function App() {
   const [showAbout, setShowAbout] = useState(false)
   const [showGuideLogin, setShowGuideLogin] = useState(false)
   const [showSupervisorLogin, setShowSupervisorLogin] = useState(false)
+  const [showGuideSettings, setShowGuideSettings] = useState(false)
   const [supervisorUser, setSupervisorUser] = useState(() => sessionStorage.getItem(SESSION_KEY))
   const [guideUser, setGuideUser] = useState(() => sessionStorage.getItem(GUIDE_SESSION_KEY))
   const [config, setConfig] = useState(null)
@@ -419,6 +472,12 @@ export default function App() {
       <header className="app-header">
         <h1>PSS Merchant Impact Score</h1>
         <div className="header-actions">
+          {(role === 'guide' ? guideUser : supervisorUser) && (
+            <span className="header-username">{role === 'guide' ? guideUser : supervisorUser}</span>
+          )}
+          {role === 'guide' && (
+            <button className="btn-gear" title="Settings" onClick={() => setShowGuideSettings(true)}>⚙</button>
+          )}
           <button className="btn-ghost" onClick={handleSwitchRole}>Switch Role</button>
           {role === 'supervisor' && (
             <button className="btn-ghost" onClick={handleLogOut}>Log Out</button>
@@ -428,9 +487,12 @@ export default function App() {
           )}
         </div>
       </header>
+      {showGuideSettings && (
+        <GuideSettingsModal guideUser={guideUser} onClose={() => setShowGuideSettings(false)} />
+      )}
       <main>
         {role === 'guide'
-          ? <GuideView config={config} guideUser={guideUser} onGuideLogout={handleGuideLogout} />
+          ? <GuideView config={config} guideUser={guideUser} />
           : <SupervisorView config={config} onConfigSave={handleConfigSave} currentUser={supervisorUser} />
         }
       </main>

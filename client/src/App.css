@@ -76,6 +76,7 @@ body {
 
 .app-header h1 { font-size: 1.2rem; }
 .header-actions { display: flex; align-items: center; gap: 0.5rem; }
+.header-username { font-size: 0.85rem; color: var(--text-muted); padding: 0 0.25rem; white-space: nowrap; }
 
 main { flex: 1; padding: 2rem; max-width: 960px; margin: 0 auto; width: 100%; }
 

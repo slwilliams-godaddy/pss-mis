@@ -3,7 +3,7 @@ import { calculateMIS, SCORE_RAILS } from '../utils/misCalculator'
 import ScoreGauge from './ScoreGauge'
 import MetricRow from './MetricRow'
 import TechTitans from './TechTitans'
-import { getGuideHistory, changeGuidePassword, getConfigMonths, getConfigForMonth } from '../utils/storage'
+import { getGuideHistory, getConfigMonths, getConfigForMonth } from '../utils/storage'
 
 // ── Math helpers ────────────────────────────────────────────────────────────
 
@@ -131,15 +131,10 @@ function Sparkline({ values, color, width = 130, height = 40 }) {
 }
 
 
-function HistoryPanel({ guideUser, onLogout }) {
+function HistoryPanel({ guideUser }) {
   const [rows, setRows] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [showSettings, setShowSettings] = useState(false)
-  const [pwCurrent, setPwCurrent] = useState('')
-  const [pwNew, setPwNew] = useState('')
-  const [pwConfirm, setPwConfirm] = useState('')
-  const [pwMsg, setPwMsg] = useState(null)
 
   useEffect(() => {
     setLoading(true)
@@ -147,19 +142,6 @@ function HistoryPanel({ guideUser, onLogout }) {
       .then(data => { setRows(data); setLoading(false) })
       .catch(err => { setError(err.message || 'Failed to load scores.'); setLoading(false) })
   }, [guideUser])
-
-  const handleChangePassword = async (e) => {
-    e.preventDefault()
-    if (pwNew !== pwConfirm) { setPwMsg({ ok: false, text: 'New passwords do not match.' }); return }
-    try {
-      await changeGuidePassword(guideUser, pwCurrent, pwNew)
-      setPwCurrent(''); setPwNew(''); setPwConfirm('')
-      setPwMsg({ ok: true, text: 'Password updated.' })
-      setTimeout(() => setPwMsg(null), 3000)
-    } catch (err) {
-      setPwMsg({ ok: false, text: err.message })
-    }
-  }
 
   const cpdPts  = (rows || []).map(r => r.cpd)
   const gcrPts  = (rows || []).map(r => r.gcr)
@@ -171,38 +153,6 @@ function HistoryPanel({ guideUser, onLogout }) {
 
   return (
     <div className="trend-tab">
-      <div className="history-guide-header">
-        <span className="history-guide-name">Viewing scores for <strong>{guideUser}</strong></span>
-        <div className="history-guide-actions">
-          <button className="btn-gear" title="Settings" onClick={() => setShowSettings(v => !v)}>⚙</button>
-          <button className="btn-ghost" onClick={onLogout}>Log Out</button>
-        </div>
-      </div>
-
-      {showSettings && (
-        <div className="guide-settings-panel">
-          <h4>Change Password</h4>
-          <form onSubmit={handleChangePassword} className="password-form">
-            <label className="password-field">
-              <span>Current password</span>
-              <input type="password" value={pwCurrent} onChange={e => setPwCurrent(e.target.value)} required autoComplete="current-password" />
-            </label>
-            <label className="password-field">
-              <span>New password</span>
-              <input type="password" value={pwNew} onChange={e => setPwNew(e.target.value)} required autoComplete="new-password" />
-            </label>
-            <label className="password-field">
-              <span>Confirm new password</span>
-              <input type="password" value={pwConfirm} onChange={e => setPwConfirm(e.target.value)} required autoComplete="new-password" />
-            </label>
-            <div className="password-actions">
-              <button type="submit" className="btn-primary">Update Password</button>
-              {pwMsg && <span className={pwMsg.ok ? 'close-month-msg' : 'close-month-msg error-msg'}>{pwMsg.text}</span>}
-            </div>
-          </form>
-        </div>
-      )}
-
       {loading && <p className="subtext">Loading…</p>}
       {error && <p className="gate-error">{error}</p>}
 
@@ -278,7 +228,7 @@ function HistoryPanel({ guideUser, onLogout }) {
 const MONTH_NAMES_CALC = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const fmtMonthCalc = (m) => { const [y, mm] = m.split('-'); return `${MONTH_NAMES_CALC[+mm - 1]} ${y}` }
 
-export default function GuideView({ config, guideUser, onGuideLogout }) {
+export default function GuideView({ config, guideUser }) {
   const [activeTab, setActiveTab] = useState('calculator')
   const [cpdMode, setCpdMode] = useState('perday')
   const [gcrMode, setGcrMode] = useState('perday')
@@ -374,7 +324,7 @@ export default function GuideView({ config, guideUser, onGuideLogout }) {
       {activeTab === 'titans' && <TechTitans guideUser={guideUser} anonymize />}
 
       {activeTab === 'lookup' && (
-        <HistoryPanel guideUser={guideUser} onLogout={onGuideLogout} />
+        <HistoryPanel guideUser={guideUser} />
       )}
 
       {activeTab === 'calculator' && (
