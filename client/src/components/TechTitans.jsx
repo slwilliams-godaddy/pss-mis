@@ -104,7 +104,7 @@ export default function TechTitans({ guideUser, anonymize = false }) {
                 <tbody>
                   {data.map((guide, idx) => {
                     const isMe = guideUser && guide.name === guideUser
-                    const showName = !anonymize || idx < 3
+                    const showName = !anonymize || idx < 3 || isMe
                     return (
                       <tr key={guide.name} className={`tt-row${isMe ? ' tt-row-me' : ''}`}>
                         <td className="tt-rank">{rankLabel(idx)}</td>
