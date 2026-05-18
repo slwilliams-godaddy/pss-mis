@@ -1192,6 +1192,7 @@ input:focus { outline: none; border-color: var(--blue); }
 .tt-total { text-align: center; font-variant-numeric: tabular-nums; min-width: 80px; }
 .tt-empty { color: #475569; }
 .tt-anon { color: #475569; }
+.history-uncapped { font-variant-numeric: tabular-nums; font-size: .85rem; }
 
 /* MISC */
 .error-screen, .loading-screen {

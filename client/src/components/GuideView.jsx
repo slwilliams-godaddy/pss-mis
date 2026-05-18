@@ -316,7 +316,7 @@ function HistoryPanel({ guideUser, onLogout }) {
           </div>
           <table className="score-table">
             <thead>
-              <tr><th>Month</th><th>CPD</th><th>GCR</th><th>QA</th><th>Total MIS</th><th>Status</th></tr>
+              <tr><th>Month</th><th>CPD</th><th>GCR</th><th>QA</th><th>Total MIS</th><th>Uncapped</th><th>Status</th></tr>
             </thead>
             <tbody>
               {rows.map(r => (
@@ -326,6 +326,7 @@ function HistoryPanel({ guideUser, onLogout }) {
                   <td><div className="result-metric-cell"><span className="result-actual">${r.actuals.gcr.toFixed(2)}/day</span><span className="result-points" style={{ color: scoreColor(r.gcr) }}>{fmtSigned(r.gcr)} pts</span></div></td>
                   <td><div className="result-metric-cell"><span className="result-actual">{r.actuals.qa.toFixed(1)}%</span><span className="result-points" style={{ color: scoreColor(r.qa) }}>{fmtSigned(r.qa)} pts</span></div></td>
                   <td style={{ color: scoreColor(r.total), fontWeight: 'bold' }}>{fmtSigned(r.total)}</td>
+                  <td className="history-uncapped" style={{ color: scoreColor(r.unboundedTotal) }}>{fmtSigned(r.unboundedTotal)}</td>
                   <td><span className={`pass-badge small ${r.passing ? 'pass' : 'fail'}`}>{r.passing ? 'On Track' : 'Off Track'}</span></td>
                 </tr>
               ))}

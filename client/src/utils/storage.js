@@ -542,6 +542,8 @@ export async function getGuideHistory(guideName) {
     if (!config || row.cpd == null || row.gcr == null || row.qa == null) return null
     const actuals = { cpd: Number(row.cpd), gcr: Number(row.gcr), qa: Number(row.qa) }
     const gcrCfg = row.channel === 'messaging' ? config.gcrMessaging : config.gcrVoice
-    return { month: row.month, channel: row.channel, actuals, ...calculateMIS(actuals, { ...config, gcr: gcrCfg }) }
+    const effectiveConfig = { ...config, gcr: gcrCfg }
+    const unbounded = calculateUnboundedMIS(actuals, effectiveConfig)
+    return { month: row.month, channel: row.channel, actuals, ...calculateMIS(actuals, effectiveConfig), unboundedTotal: unbounded.total }
   }).filter(Boolean)
 }
