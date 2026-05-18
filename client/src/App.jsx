@@ -74,6 +74,7 @@ export default function App() {
   const [role, setRole] = useState(null)
   const [showAbout, setShowAbout] = useState(false)
   const [showGuideLogin, setShowGuideLogin] = useState(false)
+  const [showSupervisorLogin, setShowSupervisorLogin] = useState(false)
   const [supervisorUser, setSupervisorUser] = useState(() => sessionStorage.getItem(SESSION_KEY))
   const [guideUser, setGuideUser] = useState(() => sessionStorage.getItem(GUIDE_SESSION_KEY))
   const [config, setConfig] = useState(null)
@@ -131,7 +132,7 @@ export default function App() {
             <span className="role-title">Guide</span>
             <span className="role-desc">View my MIS history and pacing calculator</span>
           </button>
-          <button className="role-btn" onClick={() => setRole('supervisor')}>
+          <button className="role-btn" onClick={() => supervisorUser ? setRole('supervisor') : setShowSupervisorLogin(true)}>
             <span className="role-icon">📊</span>
             <span className="role-title">Supervisor</span>
             <span className="role-desc">Input scores and manage team</span>
@@ -142,6 +143,12 @@ export default function App() {
           <GuideLoginModal
             onSuccess={(name) => { handleGuideLogin(name); setRole('guide'); setShowGuideLogin(false) }}
             onClose={() => setShowGuideLogin(false)}
+          />
+        )}
+        {showSupervisorLogin && (
+          <PasswordGate
+            onSuccess={(username) => { sessionStorage.setItem(SESSION_KEY, username); setSupervisorUser(username); setRole('supervisor'); setShowSupervisorLogin(false) }}
+            onClose={() => setShowSupervisorLogin(false)}
           />
         )}
 
@@ -404,17 +411,6 @@ export default function App() {
           )}
         </section>
       </div>
-    )
-  }
-
-  if (role === 'supervisor' && !supervisorUser) {
-    return (
-      <PasswordGate
-        onSuccess={(username) => {
-          sessionStorage.setItem(SESSION_KEY, username)
-          setSupervisorUser(username)
-        }}
-      />
     )
   }
 
