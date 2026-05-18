@@ -423,11 +423,14 @@ export default function App() {
           {role === 'supervisor' && (
             <button className="btn-ghost" onClick={handleLogOut}>Log Out</button>
           )}
+          {role === 'guide' && (
+            <button className="btn-ghost" onClick={handleGuideLogout}>Log Out</button>
+          )}
         </div>
       </header>
       <main>
         {role === 'guide'
-          ? <GuideView config={config} guideUser={guideUser} onGuideLogin={handleGuideLogin} onGuideLogout={handleGuideLogout} />
+          ? <GuideView config={config} guideUser={guideUser} onGuideLogout={handleGuideLogout} />
           : <SupervisorView config={config} onConfigSave={handleConfigSave} currentUser={supervisorUser} />
         }
       </main>
