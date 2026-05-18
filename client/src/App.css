@@ -1195,13 +1195,44 @@ input:focus { outline: none; border-color: var(--blue); }
 .history-uncapped { font-variant-numeric: tabular-nums; font-size: .85rem; }
 
 /* ── MODAL ── */
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.65); display: flex; align-items: center; justify-content: center; z-index: 200; }
-.modal-card { background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 1.5rem; width: 100%; max-width: 380px; }
-.modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
-.modal-header h2 { font-size: 1.1rem; margin: 0; }
-.modal-close { font-size: 1rem; line-height: 1; }
-.modal-form { display: flex; flex-direction: column; gap: .75rem; }
-.modal-form select, .modal-form input { width: 100%; }
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, .6);
+  backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 200;
+  padding: 1rem;
+}
+.modal-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2rem;
+  width: 100%; max-width: 380px;
+  display: flex; flex-direction: column; gap: 1.25rem;
+  box-shadow: 0 24px 64px rgba(0,0,0,.5);
+}
+.modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.modal-header h2 { font-size: 1.3rem; margin: 0; }
+.modal-header p { color: var(--text-muted); font-size: 0.9rem; margin: .3rem 0 0; }
+.modal-close { color: var(--text-muted); font-size: 1.1rem; line-height: 1; flex-shrink: 0; margin-top: .15rem; }
+.modal-close:hover { color: var(--text); }
+.modal-form {
+  display: flex; flex-direction: column; gap: 0.75rem;
+}
+.modal-form select,
+.modal-form input[type="password"] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 1rem;
+  padding: 0.6rem 0.75rem;
+  width: 100%;
+}
+.modal-form select:focus,
+.modal-form input[type="password"]:focus { outline: none; border-color: var(--blue); }
+.modal-form .btn-primary { align-self: stretch; text-align: center; margin-top: .25rem; }
 
 /* MISC */
 .error-screen, .loading-screen {

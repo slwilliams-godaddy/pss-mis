@@ -37,7 +37,10 @@ function GuideLoginModal({ onSuccess, onClose }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>Guide Sign In</h2>
+          <div>
+            <h2>Guide Sign In</h2>
+            <p>Select your name and enter your password.</p>
+          </div>
           <button className="btn-ghost modal-close" onClick={onClose}>✕</button>
         </div>
         <form onSubmit={handleSubmit} className="modal-form">
