@@ -12,6 +12,19 @@ function scoreMetric(actual, target, rail, multiplier) {
   return Math.min(rail.max, Math.max(rail.min, raw))
 }
 
+export function calculateUnboundedMIS(actuals, config) {
+  const cpd = config.cpd.target ? ((actuals.cpd / config.cpd.target) - 1) * 100 * MULTIPLIERS.cpd : 0
+  const gcr = config.gcr.target ? ((actuals.gcr / config.gcr.target) - 1) * 100 * MULTIPLIERS.gcr : 0
+  const qa  = config.qa.target  ? ((actuals.qa  / config.qa.target)  - 1) * 100 * MULTIPLIERS.qa  : 0
+  const total = cpd + gcr + qa
+  return {
+    cpd: Math.round(cpd * 100) / 100,
+    gcr: Math.round(gcr * 100) / 100,
+    qa:  Math.round(qa  * 100) / 100,
+    total: Math.round(total * 100) / 100,
+  }
+}
+
 export function calculateMIS(actuals, config) {
   const cpd = scoreMetric(actuals.cpd, config.cpd.target, SCORE_RAILS.cpd, MULTIPLIERS.cpd)
   const gcr = scoreMetric(actuals.gcr, config.gcr.target, SCORE_RAILS.gcr, MULTIPLIERS.gcr)

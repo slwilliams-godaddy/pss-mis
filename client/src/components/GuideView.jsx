@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { calculateMIS, SCORE_RAILS } from '../utils/misCalculator'
 import ScoreGauge from './ScoreGauge'
 import MetricRow from './MetricRow'
+import TechTitans from './TechTitans'
 import { getGuideHistory, checkGuide, getGuideNames, changeGuidePassword, getConfigMonths, getConfigForMonth } from '../utils/storage'
 
 // ── Math helpers ────────────────────────────────────────────────────────────
@@ -429,7 +430,12 @@ export default function GuideView({ config, guideUser, onGuideLogin, onGuideLogo
         <button className={`tab-btn ${activeTab === 'lookup' ? 'active' : ''}`} onClick={() => setActiveTab('lookup')}>
           History
         </button>
+        <button className={`tab-btn ${activeTab === 'titans' ? 'active' : ''}`} onClick={() => setActiveTab('titans')}>
+          Tech Titans
+        </button>
       </div>
+
+      {activeTab === 'titans' && <TechTitans guideUser={guideUser} />}
 
       {activeTab === 'lookup' && (
         guideUser

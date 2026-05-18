@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { calculateMIS } from './misCalculator'
+import { calculateMIS, calculateUnboundedMIS } from './misCalculator'
 
 // ── Password hashing (Web Crypto SHA-256) ─────────────────────────────────────
 
@@ -416,6 +416,42 @@ async function syncQaAverage(guideName, month) {
     .update({ qa: avg })
     .eq('guide_name', guideName)
     .eq('month', month)
+}
+
+export async function getTechTitansData(months) {
+  if (!months.length) return []
+  const [scoresResult, configsResult] = await Promise.all([
+    supabase.from('mis_scores').select('*').in('month', months).order('guide_name'),
+    supabase.from('mis_config').select('*').in('month', months),
+  ])
+  if (scoresResult.error) throw new Error(scoresResult.error.message)
+  if (configsResult.error) throw new Error(configsResult.error.message)
+
+  const configByMonth = {}
+  configsResult.data.forEach(row => { configByMonth[row.month] = rowToConfig(row) })
+
+  const guideMap = {}
+  scoresResult.data.forEach(row => {
+    if (!row.guide_name || row.cpd == null || row.gcr == null || row.qa == null) return
+    const config = configByMonth[row.month]
+    if (!config) return
+    const actuals = { cpd: Number(row.cpd), gcr: Number(row.gcr), qa: Number(row.qa) }
+    const gcrCfg = row.channel === 'messaging'
+      ? (config.gcrMessaging ?? config.gcrVoice)
+      : (config.gcrVoice ?? config.gcr)
+    const mis = calculateUnboundedMIS(actuals, { ...config, gcr: gcrCfg })
+    if (!guideMap[row.guide_name]) {
+      guideMap[row.guide_name] = { name: row.guide_name, channel: row.channel, months: {} }
+    }
+    guideMap[row.guide_name].months[row.month] = mis
+  })
+
+  return Object.values(guideMap)
+    .map(g => ({
+      ...g,
+      quarterTotal: Math.round(Object.values(g.months).reduce((s, m) => s + m.total, 0) * 100) / 100,
+    }))
+    .sort((a, b) => b.quarterTotal - a.quarterTotal)
 }
 
 export async function publishMonth(month) {

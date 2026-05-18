@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { calculateMIS } from '../utils/misCalculator'
+import TechTitans from './TechTitans'
 import {
   getTeam, saveTeam, deleteGuideRow, clearMonthData,
   getArchivedMonths, getArchivedMonth,
@@ -621,7 +622,7 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
       )}
 
       <div className="tabs">
-        {[['input', 'Input'], ['qa', 'QA Reviews'], ['team-trend', 'Team Trend'], ['trend', 'Guide Trend'], ['manage-team', 'Manage Team']].map(([t, label]) => (
+        {[['input', 'Input'], ['qa', 'QA Reviews'], ['team-trend', 'Team Trend'], ['trend', 'Guide Trend'], ['titans', 'Tech Titans'], ['manage-team', 'Manage Team']].map(([t, label]) => (
           <button
             key={t}
             className={`tab-btn ${tab === t ? 'active' : ''}`}
@@ -1256,6 +1257,9 @@ export default function SupervisorView({ config, onConfigSave, currentUser }) {
           }
         </div>
       )}
+
+      {/* ── TECH TITANS TAB ── */}
+      {tab === 'titans' && <TechTitans />}
 
       {/* ── GUIDE TREND TAB ── */}
       {tab === 'trend' && (

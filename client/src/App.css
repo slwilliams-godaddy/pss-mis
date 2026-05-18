@@ -1173,6 +1173,25 @@ input:focus { outline: none; border-color: var(--blue); }
 .btn-danger { background: transparent; border: 1px solid #7f1d1d; color: #f87171; border-radius: 4px; padding: .2rem .5rem; font-size: .75rem; cursor: pointer; }
 .btn-danger:hover { background: #7f1d1d33; }
 
+/* ── TECH TITANS ── */
+.tech-titans-tab { display: flex; flex-direction: column; gap: 1.5rem; }
+.tech-titans-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.tech-titans-title { font-size: 1.4rem; font-weight: 700; margin: 0 0 .2rem; background: linear-gradient(135deg, #f59e0b, #ef4444); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.tech-titans-subtitle { font-size: .8rem; color: #94a3b8; margin: 0; }
+.tt-quarter-select { background: #2a2a2a; border: 1px solid #444; border-radius: 6px; color: #eee; padding: .4rem .75rem; font-size: .9rem; }
+.tt-table-wrap { overflow-x: auto; }
+.tt-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.tt-table th { padding: .5rem 1rem; border-bottom: 2px solid #333; text-align: left; color: #94a3b8; font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.tt-th-rank, .tt-th-month, .tt-th-total { text-align: center; }
+.tt-table td { padding: .55rem 1rem; border-bottom: 1px solid #1e1e1e; }
+.tt-row:hover { background: #1a1a1a; }
+.tt-row-me { background: #0d1f0d !important; outline: 1px solid #22c55e33; }
+.tt-rank { text-align: center; font-size: .95rem; min-width: 52px; color: #94a3b8; }
+.tt-name { font-weight: 500; }
+.tt-score { text-align: center; font-variant-numeric: tabular-nums; }
+.tt-total { text-align: center; font-variant-numeric: tabular-nums; min-width: 80px; }
+.tt-empty { color: #475569; }
+
 /* MISC */
 .error-screen, .loading-screen {
   display: flex; align-items: center; justify-content: center;
