@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { calculateMISGeneric } from '../utils/misCalculator'
 import { TEAM_DEFS, resolveConfigByKey } from '../utils/teamConfig'
-import TechTitans from './TechTitans'
 import {
   getTeam, saveTeam, deleteGuideRow, clearMonthData,
   getArchivedMonths, getArchivedMonth,
   getConfig, saveConfig,
   getGuides, getGuidesWithHistory, addGuide, updateGuide, deleteGuide, resetGuidePassword,
   getQaReviews, addQaReview, updateQaReview, deleteQaReview,
+  logActivity,
 } from '../utils/storage'
 
 const SPARKLINE_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#a78bfa']
@@ -312,7 +312,12 @@ export default function SupervisorView({ team, currentUser }) {
   const handleResetMonth = async () => {
     setShowResetConfirm(false)
     userEdited.current = false
-    try { await clearMonthData(inputMonth, team); await loadInputMonth(inputMonth); fetchArchivedMonths() } catch { /* ignore */ }
+    try {
+      await clearMonthData(inputMonth, team)
+      logActivity({ username: currentUser, team, action: 'month_reset', month: inputMonth })
+      await loadInputMonth(inputMonth)
+      fetchArchivedMonths()
+    } catch { /* ignore */ }
   }
 
   const handleSaveInputConfig = async (e) => {
@@ -325,6 +330,7 @@ export default function SupervisorView({ team, currentUser }) {
       if (isCurrentMonth) { setCurrentConfigMonth(cfgToSave.month); setInputMonth(cfgToSave.month) }
       setEditingInputConfig(false)
       setInputConfigMsg('Config saved.')
+      logActivity({ username: currentUser, team, action: 'config_saved', month: cfgToSave.month })
       if (!isCurrentMonth) setAllArchiveData(null)
     } catch (err) { setInputConfigMsg(`Error: ${err.message}`) }
   }
@@ -403,6 +409,7 @@ export default function SupervisorView({ team, currentUser }) {
     const trimmed = addGuideName.trim()
     try {
       await addGuide({ name: trimmed, channel: addGuideChannel, team, tamRole: addGuideTamRole })
+      logActivity({ username: currentUser, team, action: 'guide_added', details: { guide: trimmed } })
       setAddGuideName('')
       setAddGuideMsg({ ok: true, text: `${trimmed} added.` })
       setTimeout(() => setAddGuideMsg(null), 3000)
@@ -414,6 +421,7 @@ export default function SupervisorView({ team, currentUser }) {
     setEditGuideMsg(null)
     try {
       await updateGuide(guide.name, editDraft)
+      logActivity({ username: currentUser, team, action: 'guide_edited', details: { guide: guide.name, changes: editDraft } })
       setEditingGuideName(null); setEditDraft({})
       await loadTeamGuides()
     } catch (err) { setEditGuideMsg({ ok: false, text: err.message }) }
@@ -443,14 +451,18 @@ export default function SupervisorView({ team, currentUser }) {
     setQaAddMsg('')
     try {
       await addQaReview({ guideName: qaGuideName, score, reviewDate: qaDate, team })
+      logActivity({ username: currentUser, team, action: 'qa_added', month: qaMonth, details: { guide: qaGuideName, score } })
       setQaScore('')
       setQaReviews(await getQaReviews(qaMonth, team))
     } catch (err) { setQaAddMsg(err.message) }
   }
 
   const handleDeleteQaReview = async (review) => {
-    try { await deleteQaReview(review.id, review.guide_name, review.month, team); setQaReviews(await getQaReviews(qaMonth, team)) }
-    catch (err) { setQaError(err.message) }
+    try {
+      await deleteQaReview(review.id, review.guide_name, review.month, team)
+      logActivity({ username: currentUser, team, action: 'qa_deleted', month: review.month, details: { guide: review.guide_name, score: review.score } })
+      setQaReviews(await getQaReviews(qaMonth, team))
+    } catch (err) { setQaError(err.message) }
   }
 
   const handleSaveEditReview = async (review) => {
@@ -458,6 +470,7 @@ export default function SupervisorView({ team, currentUser }) {
     if (isNaN(score) || score < 0 || score > 100) return
     try {
       await updateQaReview(review.id, review.guide_name, review.month, { score, reviewDate: editReviewDate }, team)
+      logActivity({ username: currentUser, team, action: 'qa_edited', month: review.month, details: { guide: review.guide_name, score } })
       setEditingReviewId(null)
       setQaReviews(await getQaReviews(qaMonth, team))
     } catch (err) { setQaError(err.message) }
@@ -498,7 +511,6 @@ export default function SupervisorView({ team, currentUser }) {
     ...(teamDef.hasQaReviews ? [['qa', teamDef.qaTabLabel]] : []),
     ['team-trend', 'Team Trend'],
     ['trend', 'Guide Trend'],
-    ['titans', 'Tech Titans'],
     ['manage-team', 'Manage Team'],
   ]
 
@@ -1180,9 +1192,6 @@ export default function SupervisorView({ team, currentUser }) {
           )}
         </div>
       )}
-
-      {/* ── TECH TITANS TAB ── */}
-      {tab === 'titans' && <TechTitans />}
 
       {/* ── MANAGE TEAM TAB ── */}
       {tab === 'manage-team' && (

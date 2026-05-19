@@ -16,29 +16,29 @@ export async function checkUser(username, password) {
   const hash = await hashPassword(password)
   const { data, error } = await supabase
     .from('supervisor_credentials')
-    .select('username, team')
+    .select('username')
     .eq('username', username)
     .eq('password_hash', hash)
     .maybeSingle()
   if (error) throw new Error(error.message)
   if (!data) return null
-  return { username: data.username, team: data.team || 'pss' }
+  return { username: data.username }
 }
 
 export async function getSupervisorUsernames() {
   const { data, error } = await supabase
     .from('supervisor_credentials')
-    .select('username, team')
+    .select('username')
     .order('username')
   if (error) throw new Error(error.message)
-  return data.map(r => ({ username: r.username, team: r.team || 'pss' }))
+  return data.map(r => r.username)
 }
 
-export async function addSupervisorUser(username, password, team = 'pss') {
+export async function addSupervisorUser(username, password) {
   const hash = await hashPassword(password)
   const { error } = await supabase
     .from('supervisor_credentials')
-    .insert({ username: username.trim(), password_hash: hash, team })
+    .insert({ username: username.trim(), password_hash: hash })
   if (error) {
     if (error.code === '23505') throw new Error('A user with that name already exists.')
     throw new Error(error.message)
@@ -46,8 +46,8 @@ export async function addSupervisorUser(username, password, team = 'pss') {
 }
 
 export async function removeSupervisorUser(username) {
-  const users = await getSupervisorUsernames()
-  if (users.length <= 1) throw new Error('Cannot remove the last supervisor.')
+  const usernames = await getSupervisorUsernames()
+  if (usernames.length <= 1) throw new Error('Cannot remove the last supervisor.')
   const { error } = await supabase
     .from('supervisor_credentials')
     .delete()
@@ -639,6 +639,22 @@ export async function getGuideHistory(guideName, team) {
     const unbounded = calculateUnboundedMISGeneric(actuals, configByKey, metricDefs)
     return { month: row.month, channel: row.channel, tam_role: row.tam_role, actuals, ...bounded, unboundedTotal: unbounded.total }
   }).filter(Boolean)
+}
+
+// ── Activity Log ──────────────────────────────────────────────────────────────
+
+export function logActivity({ username, team, action, month = null, details = null }) {
+  supabase.from('activity_log').insert({ username, team, action, month, details }).then(() => {}).catch(() => {})
+}
+
+export async function getActivityLog(limit = 200) {
+  const { data, error } = await supabase
+    .from('activity_log')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw new Error(error.message)
+  return data
 }
 
 // ── Manager overview ──────────────────────────────────────────────────────────

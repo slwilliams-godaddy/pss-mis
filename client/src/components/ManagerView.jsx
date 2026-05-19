@@ -5,19 +5,23 @@ import {
   getTeamMonthlyAverages, getConfigMonths, getConfigForMonth, getConfig, saveConfig,
   getManagerUsernames, addManagerUser, removeManagerUser,
   getSupervisorUsernames, addSupervisorUser, removeSupervisorUser,
+  getActivityLog,
 } from '../utils/storage'
 import { TEAM_DEFS } from '../utils/teamConfig'
 
 const TEAM_IDS = ['pss', 'activations', 'escalations']
 
-const TABS = [
+const ALL_TABS = [
   ['overview',      'Overview'],
   ['titans',        'Tech Titans'],
   ['pss',           'PSS'],
   ['activations',   'Activations'],
   ['escalations',   'Escalations'],
   ['manage-users',  'Manage Users'],
+  ['activity',      'Activity'],
 ]
+
+const MANAGER_ONLY_TABS = new Set(['manage-users', 'activity'])
 
 const SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 const fmtMonthShort = m => SHORT_MONTHS[+m.split('-')[1] - 1]
@@ -27,7 +31,9 @@ const fmtMIS     = v => (v > 0 ? '+' : '') + v.toFixed(2)
 const misColor   = v => v > 0 ? '#22c55e' : v < 0 ? '#ef4444' : '#f59e0b'
 const fmtMetric  = (def, val) => `${def.prefix || ''}${val.toFixed(1)}${def.suffix || ''}`
 
-export default function ManagerView({ managerUser, onLogout }) {
+export default function ManagerView({ leaderUser, canManageUsers = true, onLogout }) {
+  const TABS = canManageUsers ? ALL_TABS : ALL_TABS.filter(([id]) => !MANAGER_ONLY_TABS.has(id))
+
   const [activeTab, setActiveTab]   = useState('overview')
   const [trendData, setTrendData]   = useState(null)
   const [loading, setLoading]       = useState(true)
@@ -70,10 +76,11 @@ export default function ManagerView({ managerUser, onLogout }) {
         />
       )}
       {activeTab === 'titans'       && <div className="manager-overview"><TechTitans /></div>}
-      {activeTab === 'pss'          && <SupervisorView team="pss"         currentUser={managerUser.username} />}
-      {activeTab === 'activations'  && <SupervisorView team="activations" currentUser={managerUser.username} />}
-      {activeTab === 'escalations'  && <SupervisorView team="escalations" currentUser={managerUser.username} />}
-      {activeTab === 'manage-users' && <ManageUsersTab currentUser={managerUser.username} />}
+      {activeTab === 'pss'          && <SupervisorView team="pss"         currentUser={leaderUser.username} />}
+      {activeTab === 'activations'  && <SupervisorView team="activations" currentUser={leaderUser.username} />}
+      {activeTab === 'escalations'  && <SupervisorView team="escalations" currentUser={leaderUser.username} />}
+      {activeTab === 'manage-users' && <ManageUsersTab currentUser={leaderUser.username} />}
+      {activeTab === 'activity'     && <ActivityTab />}
 
       {targetTeam && (
         <SetTargetsModal
@@ -266,7 +273,6 @@ function ManageUsersTab({ currentUser }) {
   const [supsLoading, setSupsLoading]     = useState(true)
   const [newSupUsername, setNewSupUsername] = useState('')
   const [newSupPw, setNewSupPw]           = useState('')
-  const [newSupTeam, setNewSupTeam]       = useState('pss')
   const [addSupMsg, setAddSupMsg]         = useState(null)
 
   useEffect(() => {
@@ -305,7 +311,7 @@ function ManageUsersTab({ currentUser }) {
     e.preventDefault()
     const trimmed = newSupUsername.trim()
     try {
-      await addSupervisorUser(trimmed, newSupPw, newSupTeam)
+      await addSupervisorUser(trimmed, newSupPw)
       setSupervisorUsers(await getSupervisorUsernames())
       setNewSupUsername(''); setNewSupPw('')
       setAddSupMsg({ ok: true, text: `${trimmed} added.` })
@@ -367,12 +373,9 @@ function ManageUsersTab({ currentUser }) {
           ) : (
             <ul className="user-list">
               {supervisorUsers.map(u => (
-                <li key={u.username} className="user-list-item">
-                  <span>
-                    {u.username}
-                    <span className="user-team-tag"> · {TEAM_DEFS[u.team]?.label ?? u.team}</span>
-                  </span>
-                  <button className="btn-ghost user-remove-btn" onClick={() => handleRemoveSupervisor(u.username)}>Remove</button>
+                <li key={u} className="user-list-item">
+                  <span>{u}</span>
+                  <button className="btn-ghost user-remove-btn" onClick={() => handleRemoveSupervisor(u)}>Remove</button>
                 </li>
               ))}
             </ul>
@@ -386,14 +389,6 @@ function ManageUsersTab({ currentUser }) {
               <span>Password</span>
               <input type="password" value={newSupPw} onChange={e => setNewSupPw(e.target.value)} required autoComplete="new-password" />
             </label>
-            <label className="password-field">
-              <span>Team</span>
-              <select value={newSupTeam} onChange={e => setNewSupTeam(e.target.value)}>
-                {Object.entries(TEAM_DEFS).map(([id, def]) => (
-                  <option key={id} value={id}>{def.label}</option>
-                ))}
-              </select>
-            </label>
             <div className="password-actions">
               <button type="submit" className="btn-secondary">Add Supervisor</button>
               {addSupMsg && <span className={addSupMsg.ok ? 'close-month-msg' : 'close-month-msg error-msg'}>{addSupMsg.text}</span>}
@@ -402,6 +397,96 @@ function ManageUsersTab({ currentUser }) {
         </div>
 
       </div>
+    </div>
+  )
+}
+
+// ── Activity Tab ──────────────────────────────────────────────────────────────
+
+const ACTION_META = {
+  config_saved: { label: 'Targets Saved',       color: 'var(--blue)'  },
+  month_reset:  { label: 'Month Reset',          color: 'var(--red)'   },
+  guide_added:  { label: 'Guide Added',          color: 'var(--green)' },
+  guide_edited: { label: 'Guide Edited',         color: 'var(--amber)' },
+  qa_added:     { label: 'QA Review Added',      color: 'var(--green)' },
+  qa_deleted:   { label: 'QA Review Removed',    color: 'var(--red)'   },
+  qa_edited:    { label: 'QA Review Edited',     color: 'var(--amber)' },
+}
+
+function fmtTs(ts) {
+  return new Date(ts).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  })
+}
+
+function fmtDetail(action, details, month) {
+  const d = details || {}
+  switch (action) {
+    case 'config_saved': return d.month || month || null
+    case 'month_reset':  return month || null
+    case 'guide_added':  return d.guide || null
+    case 'guide_edited': {
+      if (!d.guide) return null
+      const changes = d.changes
+        ? Object.entries(d.changes).map(([k, v]) => `${k}: ${v}`).join(', ')
+        : ''
+      return changes ? `${d.guide} — ${changes}` : d.guide
+    }
+    case 'qa_added':
+    case 'qa_edited':    return d.guide ? `${d.guide} — score ${d.score}${month ? ` (${month})` : ''}` : null
+    case 'qa_deleted':   return d.guide ? `${d.guide}${month ? ` (${month})` : ''}` : null
+    default:             return month || null
+  }
+}
+
+function ActivityTab() {
+  const [entries, setEntries] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError]     = useState('')
+
+  const load = () => {
+    setLoading(true)
+    setError('')
+    getActivityLog()
+      .then(data => { setEntries(data); setLoading(false) })
+      .catch(err => { setError(err.message); setLoading(false) })
+  }
+
+  useEffect(() => { load() }, [])
+
+  if (loading) return <p className="subtext" style={{ padding: '2rem' }}>Loading activity…</p>
+  if (error)   return <p className="error-msg" style={{ padding: '2rem' }}>{error}</p>
+
+  return (
+    <div className="activity-tab">
+      <div className="activity-header">
+        <h3 className="manager-section-label">Activity Log</h3>
+        <button className="btn-ghost" onClick={load}>Refresh</button>
+      </div>
+      {entries.length === 0 ? (
+        <p className="subtext">No activity recorded yet.</p>
+      ) : (
+        <div className="activity-feed">
+          {entries.map(entry => {
+            const meta   = ACTION_META[entry.action] || { label: entry.action, color: 'var(--text-muted)' }
+            const detail = fmtDetail(entry.action, entry.details, entry.month)
+            return (
+              <div key={entry.id} className="activity-entry">
+                <div className="activity-entry-main">
+                  <span className="activity-badge" style={{ color: meta.color, borderColor: meta.color }}>
+                    {meta.label}
+                  </span>
+                  <span className="activity-user">{entry.username}</span>
+                  <span className={`tt-team-badge tt-team-${entry.team}`}>{entry.team}</span>
+                  {detail && <span className="activity-detail">{detail}</span>}
+                </div>
+                <span className="activity-ts">{fmtTs(entry.created_at)}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

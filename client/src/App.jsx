@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import logo from './assets/logo.png'
 import GuideView from './components/GuideView'
-import SupervisorView from './components/SupervisorView'
 import ManagerView from './components/ManagerView'
 import { getGuideNames, checkGuide, changeGuidePassword, checkUser, changeSupervisorPassword, getSupervisorUsernames, checkManager, getManagerUsernames, changeManagerPassword } from './utils/storage'
 import { TEAM_DEFS } from './utils/teamConfig'
@@ -26,9 +25,12 @@ function LoginPanel({ onLogin }) {
     if (!role || !teamReady) return
     setNamesLoading(true)
     const fetch =
-      role === 'guide'       ? getGuideNames(team) :
-      role === 'supervisor'  ? getSupervisorUsernames().then(us => us.map(u => u.username)) :
-                               getManagerUsernames()
+      role === 'guide'  ? getGuideNames(team) :
+      role === 'leader' ? Promise.all([
+          getSupervisorUsernames(),
+          getManagerUsernames(),
+        ]).then(([sups, mgrs]) => [...new Set([...sups, ...mgrs])].sort()) :
+      Promise.resolve([])
     fetch
       .then(ns => { setNames(ns); if (ns.length === 1) setName(ns[0]); setNamesLoading(false) })
       .catch(() => setNamesLoading(false))
@@ -41,14 +43,19 @@ function LoginPanel({ onLogin }) {
     setError('')
     setLoading(true)
     try {
-      const result =
-        role === 'guide'      ? await checkGuide(name, password) :
-        role === 'supervisor' ? await checkUser(name, password) :
-                                await checkManager(name, password)
-      if (result) {
-        onLogin(role, role === 'guide' ? { name, team: result.team } : result)
+      if (role === 'guide') {
+        const result = await checkGuide(name, password)
+        if (result) { onLogin('guide', { name, team: result.team }) }
+        else { setError('Incorrect credentials.') }
       } else {
-        setError('Incorrect credentials.')
+        const supResult = await checkUser(name, password)
+        if (supResult) {
+          onLogin('supervisor', { username: name })
+        } else {
+          const mgrResult = await checkManager(name, password)
+          if (mgrResult) { onLogin('manager', mgrResult) }
+          else { setError('Incorrect credentials.') }
+        }
       }
     } catch {
       setError('Could not verify credentials. Please try again.')
@@ -69,8 +76,7 @@ function LoginPanel({ onLogin }) {
           <select value={role} onChange={e => handleRoleChange(e.target.value)} required disabled={loading}>
             <option value="" disabled>Select role</option>
             <option value="guide">Guide</option>
-            <option value="supervisor">Supervisor</option>
-            <option value="manager">Manager</option>
+            <option value="leader">Leader</option>
           </select>
         </div>
 
@@ -91,7 +97,7 @@ function LoginPanel({ onLogin }) {
             <label className="login-field-label">{role === 'guide' ? 'Name' : 'Username'}</label>
             <select value={name} onChange={e => { setName(e.target.value); setError('') }} required disabled={loading || namesLoading}>
               <option value="" disabled>
-                {namesLoading ? 'Loading…' : `Select ${role === 'guide' ? 'your name' : 'user'}`}
+                {namesLoading ? 'Loading…' : role === 'guide' ? 'Select your name' : 'Select user'}
               </option>
               {names.map(n => <option key={n} value={n}>{n}</option>)}
             </select>
@@ -853,7 +859,7 @@ export default function App() {
           const displayName = role === 'guide' ? guideUser?.name : role === 'supervisor' ? supervisorUser?.username : managerUser?.username
           const initial = displayName?.[0]?.toUpperCase() ?? '?'
           const onSettings = role === 'guide' ? () => setShowGuideSettings(true) : role === 'supervisor' ? () => setShowSupervisorSettings(true) : () => setShowManagerSettings(true)
-          const onLogout = role === 'guide' ? handleGuideLogout : role === 'manager' ? handleManagerLogout : handleLogOut
+          const onLogout = role === 'guide' ? handleGuideLogout : role === 'supervisor' ? handleLogOut : handleManagerLogout
           return (
             <div className="header-actions">
               <div className="header-user">
@@ -890,8 +896,8 @@ export default function App() {
         {role === 'guide'
           ? <GuideView team={guideUser?.team} guideUser={guideUser?.name} />
           : role === 'manager'
-            ? <ManagerView managerUser={managerUser} onLogout={handleManagerLogout} />
-            : <SupervisorView team={supervisorUser?.team} currentUser={supervisorUser?.username} />
+            ? <ManagerView leaderUser={managerUser} canManageUsers={true} onLogout={handleManagerLogout} />
+            : <ManagerView leaderUser={supervisorUser} canManageUsers={false} onLogout={handleLogOut} />
         }
       </main>
     </div>
