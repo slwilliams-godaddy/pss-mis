@@ -268,7 +268,7 @@ main { flex: 1; padding: 2rem; max-width: 960px; margin: 0 auto; width: 100%; }
 main.main--no-top-pad { padding-top: 0; }
 
 /* VIEW */
-.view-container { display: flex; flex-direction: column; gap: 1.5rem; padding-top: 1rem; }
+.view-container { display: flex; flex-direction: column; gap: 1.5rem; }
 .view-container h2 { font-size: 1.5rem; }
 .subtext { color: var(--text-muted); font-size: 0.9rem; }
 
@@ -511,17 +511,24 @@ input:focus { outline: none; border-color: var(--blue); }
 .metric-score { text-align: right; font-weight: 700; font-size: 1rem; }
 
 /* TABS */
-.tabs { display: flex; gap: 0.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0; }
+.tabs {
+  display: flex;
+  gap: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 0.25rem;
+}
 .tab-btn {
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 0.9rem;
-  padding: 0.6rem 1rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 0.5rem 0.85rem;
   margin-bottom: -1px;
-  transition: color 0.2s, border-color 0.2s;
+  transition: color 0.15s, border-color 0.15s;
 }
 .tab-btn.active { color: var(--text); border-bottom-color: var(--blue); }
 .tab-btn:hover:not(.active) { color: var(--text); }
@@ -1393,7 +1400,6 @@ input:focus { outline: none; border-color: var(--blue); }
 
 /* MANAGER VIEW */
 .manager-view { display: flex; flex-direction: column; gap: 0; }
-.manager-view .view-container { padding-top: 1.5rem; }
 
 .manager-tabs {
   display: flex;
