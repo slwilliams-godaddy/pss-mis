@@ -554,10 +554,6 @@ export default function SupervisorView({ team, currentUser }) {
 
   return (
     <div className="view-container">
-      <div className="supervisor-header">
-        <h2>Supervisor Dashboard</h2>
-      </div>
-
       <div className="tabs">
         {TABS.map(([t, label]) => (
           <button key={t} className={`tab-btn ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
