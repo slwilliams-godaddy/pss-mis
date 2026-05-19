@@ -770,13 +770,15 @@ export default function SupervisorView({ team, currentUser }) {
                                 const computed = g[modeKey] === 'total' && !isNaN(totalVal) && days > 0 ? totalVal / days : null
                                 return (
                                   <td key={def.key}>
-                                    <div className="cell-col">
-                                      <div className="cell-header">
+                                    <div className="perday-cell">
+                                      <div className="perday-toggles">
                                         <button type="button" className={`mini-toggle ${g[modeKey] === 'perday' ? 'active' : ''}`} onClick={() => toggleMetricMode(i, def.key)}>avg</button>
                                         <button type="button" className={`mini-toggle ${g[modeKey] === 'total' ? 'active' : ''}`} onClick={() => toggleMetricMode(i, def.key)}>total</button>
                                       </div>
-                                      <input type="number" value={g[def.key]} onChange={e => handleGuideChange(i, def.key, e.target.value)} placeholder={g[modeKey] === 'total' ? `Total ${def.label}` : 'Per day'} step="0.01" />
-                                      {computed !== null && <span className="computed-hint">{def.prefix}{computed.toFixed(2)}{def.suffix}</span>}
+                                      <div className="perday-input-wrap">
+                                        <input type="number" value={g[def.key]} onChange={e => handleGuideChange(i, def.key, e.target.value)} placeholder={g[modeKey] === 'total' ? `Total` : 'Per day'} step="0.01" />
+                                        {computed !== null && <span className="computed-hint">{def.prefix}{computed.toFixed(2)}{def.suffix}</span>}
+                                      </div>
                                     </div>
                                   </td>
                                 )
