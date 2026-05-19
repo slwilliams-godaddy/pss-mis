@@ -718,7 +718,7 @@ export default function App() {
                       testing, and enhancing the team knowledge base.
                     </p>
                     <p>Non-Queue Work/Day = Total Non-Queue Contributions ÷ Responsible Days</p>
-                    <p className="mis-example-note">Level 1 target: 12/day &nbsp;·&nbsp; Level 2 target: 5/day</p>
+                    <p className="mis-example-note">Level 1 target: 0.25/day &nbsp;·&nbsp; Level 2 target: 0.6/day</p>
                   </div>
 
                 </div>
@@ -794,9 +794,9 @@ export default function App() {
                   </tbody>
                 </table>
 
-                <p className="mis-subsection-label">Escalations Example — TAM 3, Off Track</p>
+                <p className="mis-subsection-label">Escalations Example — Level 2, Off Track</p>
                 <p className="mis-example-note">
-                  Monthly targets: Case Closures 5/day &nbsp;·&nbsp; Resolution Rate 60% &nbsp;·&nbsp; Non-Queue Contributions 5/day
+                  Monthly targets: Case Closures 5/day &nbsp;·&nbsp; Resolution Rate 60% &nbsp;·&nbsp; Non-Queue Contributions 0.6/day
                 </p>
                 <table className="mis-example-table">
                   <thead>
@@ -814,13 +814,13 @@ export default function App() {
                       <td className="mis-pts-neg">−5.00</td>
                     </tr>
                     <tr>
-                      <td>Non-Queue Contributions/Day</td><td>5</td><td>4.5</td>
-                      <td className="mis-calc-cell">((4.5 ÷ 5) − 1) × 100 × 1.0</td>
-                      <td className="mis-pts-neg">−10.00</td>
+                      <td>Non-Queue Contributions/Day</td><td>0.6</td><td>0.5</td>
+                      <td className="mis-calc-cell">((0.5 ÷ 0.6) − 1) × 100 × 1.0</td>
+                      <td className="mis-pts-neg">−16.67</td>
                     </tr>
                     <tr className="mis-example-total">
                       <td colSpan={4}>Total MIS</td>
-                      <td><span className="mis-status-off">−31.00 — Off Track ✗</span></td>
+                      <td><span className="mis-status-off">−37.67 — Off Track ✗</span></td>
                     </tr>
                   </tbody>
                 </table>

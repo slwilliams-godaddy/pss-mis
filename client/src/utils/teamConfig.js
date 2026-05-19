@@ -100,7 +100,7 @@ export const TEAM_DEFS = {
         prefix: '', suffix: '/day', weight: 1.0, rail: { min: -25, max: 25 },
         entryMode: 'perday', channelSplit: false,
         configKey: 'nonQueueWorkDay', configKeyVoice: null, configKeyMessaging: null,
-        tamTargets: true, tamTargetMap: { 'Level 1': 12, 'Level 2': 5 },
+        tamTargets: true, tamTargetMap: { 'Level 1': 0.25, 'Level 2': 0.6 },
         tamTierMap: { 'Level 1': 'level1Target', 'Level 2': 'level2Target' },
         isQuality: false, maxEntry: null,
       },
@@ -108,9 +108,9 @@ export const TEAM_DEFS = {
     hasQaReviews: true, qaMetricKey: null, qaNotInMis: true,
     qaTabLabel: 'QA Reviews', hasDays: true, hasChannel: false,
     defaultConfig: {
-      caseClosuresDay: { level1Target: 8,  level2Target: 5  },
+      caseClosuresDay: { level1Target: 8,   level2Target: 5   },
       resolutionRate:  { target: 60 },
-      nonQueueWorkDay: { level1Target: 12, level2Target: 5  },
+      nonQueueWorkDay: { level1Target: 0.25, level2Target: 0.6 },
     },
   },
 }
