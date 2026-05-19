@@ -31,10 +31,11 @@ const fmtMIS     = v => (v > 0 ? '+' : '') + v.toFixed(2)
 const misColor   = v => v > 0 ? '#22c55e' : v < 0 ? '#ef4444' : '#f59e0b'
 const fmtMetric  = (def, val) => `${def.prefix || ''}${val.toFixed(1)}${def.suffix || ''}`
 
-export default function ManagerView({ leaderUser, canManageUsers = true, onLogout }) {
-  const TABS = canManageUsers ? ALL_TABS : ALL_TABS.filter(([id]) => !MANAGER_ONLY_TABS.has(id))
+export default function ManagerView({ leaderUser, canManageUsers = true, onLogout, activeTab: externalTab = null, onTabChange = null }) {
+  const [_internalTab, _setInternalTab] = useState('overview')
+  const activeTab  = externalTab  ?? _internalTab
+  const setActiveTab = onTabChange ?? _setInternalTab
 
-  const [activeTab, setActiveTab]   = useState('overview')
   const [trendData, setTrendData]   = useState(null)
   const [loading, setLoading]       = useState(true)
   const [error, setError]           = useState('')
@@ -55,17 +56,6 @@ export default function ManagerView({ leaderUser, canManageUsers = true, onLogou
 
   return (
     <div className="manager-view">
-      <div className="manager-tabs">
-        {TABS.map(([id, label]) => (
-          <button
-            key={id}
-            className={`manager-tab-btn${activeTab === id ? ' active' : ''}`}
-            onClick={() => setActiveTab(id)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
 
       {activeTab === 'overview' && (
         <OverviewTab

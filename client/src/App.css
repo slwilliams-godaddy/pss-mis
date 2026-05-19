@@ -156,13 +156,36 @@ body {
 .app-header {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  padding: 1rem 2rem;
+  padding: 0.75rem 2rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
+.app-header--tabbed { border-bottom: none; padding-bottom: 0; }
 
 .app-header h1 { font-size: 1.2rem; }
+
+.app-nav {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  padding: 0 2rem;
+}
+.nav-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 500;
+  padding: 0.65rem 0.9rem;
+  margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.nav-tab.active { color: var(--text); border-bottom-color: var(--blue); }
+.nav-tab:hover:not(.active) { color: var(--text); }
 
 .header-actions { display: flex; align-items: center; gap: 0.6rem; }
 
@@ -242,9 +265,10 @@ body {
 .header-logout-btn:hover { color: var(--text); background: var(--surface2); }
 
 main { flex: 1; padding: 2rem; max-width: 960px; margin: 0 auto; width: 100%; }
+main.main--no-top-pad { padding-top: 0; }
 
 /* VIEW */
-.view-container { display: flex; flex-direction: column; gap: 1.5rem; }
+.view-container { display: flex; flex-direction: column; gap: 1.5rem; padding-top: 1rem; }
 .view-container h2 { font-size: 1.5rem; }
 .subtext { color: var(--text-muted); font-size: 0.9rem; }
 

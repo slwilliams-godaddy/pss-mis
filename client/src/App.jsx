@@ -354,6 +354,17 @@ const SESSION_KEY = 'pss-mis:supervisor'
 const GUIDE_SESSION_KEY = 'pss-mis:guide'
 const MANAGER_SESSION_KEY = 'pss-mis:manager'
 
+const MANAGER_ALL_TABS = [
+  ['overview',     'Overview'],
+  ['titans',       'Tech Titans'],
+  ['pss',          'PSS'],
+  ['activations',  'Activations'],
+  ['escalations',  'Escalations'],
+  ['manage-users', 'Manage Users'],
+  ['activity',     'Activity'],
+]
+const MANAGER_ONLY_TAB_IDS = new Set(['manage-users', 'activity'])
+
 function parseSession(key) {
   try {
     const v = JSON.parse(sessionStorage.getItem(key))
@@ -406,6 +417,8 @@ export default function App() {
   const [showGuideSettings, setShowGuideSettings] = useState(false)
   const [showSupervisorSettings, setShowSupervisorSettings] = useState(false)
   const [showManagerSettings, setShowManagerSettings] = useState(false)
+  const [navTab, setNavTab] = useState('overview')
+  useEffect(() => { setNavTab('overview') }, [role])
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -851,9 +864,15 @@ export default function App() {
     )
   }
 
+  const navTabs = role === 'manager'
+    ? MANAGER_ALL_TABS
+    : role === 'supervisor'
+      ? MANAGER_ALL_TABS.filter(([id]) => !MANAGER_ONLY_TAB_IDS.has(id))
+      : []
+
   return (
     <div className="app">
-      <header className="app-header">
+      <header className={`app-header${navTabs.length ? ' app-header--tabbed' : ''}`}>
         <h1>CAS Performance Management</h1>
         {(() => {
           const displayName = role === 'guide' ? guideUser?.name : role === 'supervisor' ? supervisorUser?.username : managerUser?.username
@@ -892,12 +911,25 @@ export default function App() {
       {showManagerSettings && managerUser && (
         <ManagerSettingsModal currentUser={managerUser.username} onClose={() => setShowManagerSettings(false)} />
       )}
-      <main>
+      {navTabs.length > 0 && (
+        <nav className="app-nav">
+          {navTabs.map(([id, label]) => (
+            <button
+              key={id}
+              className={`nav-tab${navTab === id ? ' active' : ''}`}
+              onClick={() => setNavTab(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      )}
+      <main className={navTabs.length ? 'main--no-top-pad' : ''}>
         {role === 'guide'
           ? <GuideView team={guideUser?.team} guideUser={guideUser?.name} />
           : role === 'manager'
-            ? <ManagerView leaderUser={managerUser} canManageUsers={true} onLogout={handleManagerLogout} />
-            : <ManagerView leaderUser={supervisorUser} canManageUsers={false} onLogout={handleLogOut} />
+            ? <ManagerView leaderUser={managerUser} canManageUsers={true} activeTab={navTab} onTabChange={setNavTab} />
+            : <ManagerView leaderUser={supervisorUser} canManageUsers={false} activeTab={navTab} onTabChange={setNavTab} />
         }
       </main>
     </div>
