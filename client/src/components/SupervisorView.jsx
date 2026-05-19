@@ -725,14 +725,11 @@ export default function SupervisorView({ team, currentUser }) {
 
               {/* Input grid + results */}
               <div className="results-card">
-                <div className="results-header">
-                  <h3>{isCurrentMonth ? `${fmtMonth(inputMonth)} — In Progress` : fmtMonth(inputMonth)}</h3>
-                  {inputSaveStatus && (
-                    <span className={`save-status ${inputSaveStatus}`}>
-                      {inputSaveStatus === 'saving' ? 'Saving…' : inputSaveStatus === 'saved' ? 'Saved' : 'Save failed'}
-                    </span>
-                  )}
-                </div>
+                {inputSaveStatus && (
+                  <span className={`save-status ${inputSaveStatus}`}>
+                    {inputSaveStatus === 'saving' ? 'Saving…' : inputSaveStatus === 'saved' ? 'Saved' : 'Save failed'}
+                  </span>
+                )}
 
                 <div className="bulk-table-wrap">
                   <table className="bulk-input-table">
