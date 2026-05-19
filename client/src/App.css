@@ -418,10 +418,10 @@ input:focus { outline: none; border-color: var(--blue); }
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 1.5rem;
+  padding: 1rem 1.25rem;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1rem;
 }
 
 .results-header { display: flex; justify-content: space-between; align-items: center; }
@@ -512,8 +512,8 @@ input:focus { outline: none; border-color: var(--blue); }
 .bulk-table-wrap { overflow-x: auto; }
 .bulk-input-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .bulk-input-table th { color: var(--text-muted); font-size: 0.8rem; font-weight: 500; padding: 0.5rem 0.5rem; text-align: left; border-bottom: 1px solid var(--border); }
-.bulk-input-table td { padding: 0.4rem 0.4rem; vertical-align: top; }
-.bulk-input-table input { background: var(--bg); border: 1px solid var(--border); border-radius: 5px; color: var(--text); font-size: 0.9rem; padding: 0.45rem 0.6rem; width: 100%; }
+.bulk-input-table td { padding: 0.2rem 0.4rem; vertical-align: middle; }
+.bulk-input-table input { background: var(--bg); border: 1px solid var(--border); border-radius: 5px; color: var(--text); font-size: 0.9rem; padding: 0.3rem 0.5rem; width: 100%; }
 .bulk-input-table input:focus { outline: none; border-color: var(--blue); }
 
 .bulk-actions { display: flex; gap: 0.75rem; margin-top: 1rem; align-items: center; }
@@ -615,8 +615,8 @@ input:focus { outline: none; border-color: var(--blue); }
 .days-inline input { width: 120px; }
 
 /* BULK TABLE CELL LAYOUT */
-.cell-col { display: flex; flex-direction: column; gap: 0.25rem; min-width: 100px; }
-.cell-header { min-height: 1.75rem; display: flex; align-items: center; gap: 2px; }
+.cell-col { display: flex; flex-direction: column; gap: 0.2rem; min-width: 80px; }
+.cell-header { min-height: 1.5rem; display: flex; align-items: center; gap: 2px; }
 .mini-toggle {
   background: transparent;
   border: 1px solid var(--border);
@@ -649,12 +649,13 @@ input:focus { outline: none; border-color: var(--blue); }
   flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem;
-  background: rgba(99,102,241,0.1);
-  border: 1px solid #6366f1;
-  border-radius: 6px;
-  padding: 0.6rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--blue);
+  border-left: 4px solid var(--blue);
+  border-radius: var(--radius);
+  padding: 0.75rem 1.25rem;
   font-size: 0.88rem;
-  color: #a5b4fc;
+  color: var(--text-muted);
   margin-bottom: 0.75rem;
 }
 
@@ -666,7 +667,7 @@ input:focus { outline: none; border-color: var(--blue); }
 }
 
 .new-month-controls select {
-  background: var(--surface);
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
@@ -800,7 +801,7 @@ input:focus { outline: none; border-color: var(--blue); }
 .history-config-threshold { display: flex; align-items: center; gap: 0.4rem; }
 .cfg-target { font-weight: 600; color: var(--text); }
 .cfg-muted { color: var(--text-muted); }
-.cfg-sep { color: var(--border); }
+.cfg-sep { color: var(--text-muted); font-size: 0.85rem; }
 .cfg-hint { font-size: 0.72rem; color: var(--text-muted); margin-left: 0.25rem; }
 
 .targets-month-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; }
@@ -833,6 +834,29 @@ input:focus { outline: none; border-color: var(--blue); }
 }
 .targets-input:focus { outline: none; border-color: var(--blue); }
 .targets-form-actions { display: flex; align-items: center; gap: 0.75rem; padding-top: 0.75rem; }
+
+.input-controls-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.input-controls-divider { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
+.input-month-select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.95rem;
+  padding: 0.55rem 0.75rem;
+  cursor: pointer;
+}
+.input-month-select:focus { outline: none; border-color: var(--blue); }
+
+.targets-inline { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; align-items: center; }
+.targets-chip { display: flex; align-items: baseline; gap: 0.35rem; font-size: 0.85rem; }
+.targets-chip-label { color: var(--text-muted); }
+.targets-chip-value { font-weight: 600; color: var(--text); }
 
 .history-averages { display: flex; gap: 1.25rem; flex-wrap: wrap; align-items: flex-start; }
 .hist-avg-stat { display: flex; flex-direction: column; gap: 0.2rem; }

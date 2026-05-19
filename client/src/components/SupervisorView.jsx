@@ -102,7 +102,7 @@ export default function SupervisorView({ team, currentUser }) {
   const [currentConfigMonth, setCurrentConfigMonth] = useState(today)
 
   // Input tab
-  const [inputMonth, setInputMonth] = useState(today)
+  const [inputMonth, setInputMonth] = useState('')
   const [inputGuides, setInputGuides] = useState([{ ...EMPTY_GUIDE }])
   const [inputSaveStatus, setInputSaveStatus] = useState(null)
   const [inputLoading, setInputLoading] = useState(false)
@@ -213,6 +213,12 @@ export default function SupervisorView({ team, currentUser }) {
   useEffect(() => { setAllArchiveData(null) }, [archivedMonths])
 
   useEffect(() => {
+    if (!showRosterPicker) return
+    const available = (archivedMonths || []).filter(m => m !== currentConfigMonth)
+    if (available.length) setRosterPickMonth(available[0])
+  }, [showRosterPicker, archivedMonths])
+
+  useEffect(() => {
     if ((tab !== 'trend' && tab !== 'team-trend') || allArchiveData !== null || !archivedMonths?.length) return
     const trendMonths = archivedMonths.filter(m => m !== currentConfigMonth)
     if (!trendMonths.length) { setAllArchiveData({}); return }
@@ -244,8 +250,8 @@ export default function SupervisorView({ team, currentUser }) {
         setInputGuides(data.guides)
       } else {
         setInputGuides([{ ...EMPTY_GUIDE }])
+        setShowRosterPicker(true)
       }
-      if (month === currentConfigMonth) setShowRosterPicker(true)
       if (month !== currentConfigMonth) {
         const archiveData = await getArchivedMonth(month, team)
         const cfg = archiveData?.config
@@ -261,12 +267,12 @@ export default function SupervisorView({ team, currentUser }) {
 
   // Only load month data after config is ready (inputMonth initialized from config)
   useEffect(() => {
-    if (!inputConfig) return
+    if (!inputConfig || !inputMonth) return
     loadInputMonth(inputMonth)
   }, [inputMonth])
 
   useEffect(() => {
-    if (!teamDef.hasQaReviews) return
+    if (!teamDef.hasQaReviews || !inputMonth) return
     getQaReviews(inputMonth, team).then(reviews => {
       const map = {}
       reviews.forEach(r => {
@@ -499,12 +505,13 @@ export default function SupervisorView({ team, currentUser }) {
 
   const groupedQaReviews = useMemo(() => {
     const map = {}
+    qaGuideNames.forEach(name => { map[name] = [] })
     qaReviews.forEach(r => { if (!map[r.guide_name]) map[r.guide_name] = []; map[r.guide_name].push(r) })
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).map(([name, reviews]) => ({
       name, reviews,
       avg: reviews.length ? Math.round(reviews.reduce((s, r) => s + Number(r.score), 0) / reviews.length * 100) / 100 : null,
     }))
-  }, [qaReviews])
+  }, [qaReviews, qaGuideNames])
 
   const TABS = [
     ['input', 'Input'],
@@ -562,32 +569,38 @@ export default function SupervisorView({ team, currentUser }) {
       {/* ── INPUT TAB ── */}
       {tab === 'input' && (
         <div className="history-tab">
-          <div className="history-controls">
-            <label className="history-month-select">
-              <span>Month</span>
-              <select value={inputMonth} onChange={e => setInputMonth(e.target.value)}>
-                {allInputMonths.map(m => (
-                  <option key={m} value={m}>{fmtMonth(m)}{m === currentConfigMonth ? ' (current)' : ''}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-
           {(inputLoading || !inputConfig) && <p className="subtext">Loading…</p>}
 
           {!inputLoading && inputConfig && (
             <>
-              {/* Config / Targets */}
-              <div className="history-section">
-                <div className="history-section-header">
-                  <h4>Targets — {fmtMonth(inputMonth)}</h4>
-                  {!editingInputConfig && (
-                    <button className="btn-ghost" onClick={() => { setEditingInputConfig(true); setInputConfigDraft({ ...inputConfig }); setInputConfigMsg('') }}>
-                      Set Targets
-                    </button>
-                  )}
+              {/* Controls bar: month selector + targets + set targets */}
+              <div className="input-controls-bar">
+                <select className="input-month-select" value={inputMonth} onChange={e => setInputMonth(e.target.value)}>
+                  {allInputMonths.map(m => (
+                    <option key={m} value={m}>{fmtMonth(m)}{m === currentConfigMonth ? ' (current)' : ''}</option>
+                  ))}
+                </select>
+                <div className="input-controls-divider" />
+                <div className="targets-inline" style={{ flex: 1 }}>
+                  {configRows.map(({ configKey, field, label, prefix, suffix }) => {
+                    const c = inputConfig?.[configKey]
+                    if (!c) return null
+                    return (
+                      <span key={`${configKey}-${field}`} className="targets-chip">
+                        <span className="targets-chip-label">{label}</span>
+                        <span className="targets-chip-value">{prefix}{c[field]}{suffix}</span>
+                      </span>
+                    )
+                  })}
                 </div>
-                {editingInputConfig ? (
+                <button className="btn-ghost" onClick={() => { setEditingInputConfig(true); setInputConfigDraft({ ...inputConfig }); setInputConfigMsg('') }}>
+                  Set Targets
+                </button>
+              </div>
+
+              {/* Targets edit form */}
+              {editingInputConfig && (
+                <div className="history-section">
                   <form onSubmit={handleSaveInputConfig}>
                     {isCurrentMonth && (
                       <div className="targets-month-row">
@@ -649,24 +662,8 @@ export default function SupervisorView({ team, currentUser }) {
                       {inputConfigMsg && <span className="close-month-msg">{inputConfigMsg}</span>}
                     </div>
                   </form>
-                ) : (
-                  <table className="targets-table">
-                    <thead><tr><th>Metric</th><th>Target</th></tr></thead>
-                    <tbody>
-                      {configRows.map(({ configKey, field, label, prefix, suffix }) => {
-                        const c = inputConfig?.[configKey]
-                        if (!c) return null
-                        return (
-                          <tr key={`${configKey}-${field}`}>
-                            <td className="targets-metric-name">{label}</td>
-                            <td className="targets-val targets-val-target">{prefix}{c[field]}{suffix}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* Roster picker */}
               {showRosterPicker && (
@@ -678,7 +675,6 @@ export default function SupervisorView({ team, currentUser }) {
                       <>
                         <span className="cfg-sep">or import from</span>
                         <select value={rosterPickMonth} onChange={e => setRosterPickMonth(e.target.value)}>
-                          <option value="">— previous month —</option>
                           {(archivedMonths || []).filter(m => m !== currentConfigMonth).map(m => (
                             <option key={m} value={m}>{fmtMonth(m)}</option>
                           ))}
@@ -746,6 +742,8 @@ export default function SupervisorView({ team, currentUser }) {
                         {teamDef.hasChannel && <th>Channel</th>}
                         {metricDefs.map(def => <th key={def.key}>{def.label} {thHint(def)}</th>)}
                         <th>Accountable Days</th>
+                        <th>MIS</th>
+                        <th>Status</th>
                         <th></th>
                       </tr>
                     </thead>
@@ -755,20 +753,14 @@ export default function SupervisorView({ team, currentUser }) {
                         return (
                           <tr key={i}>
                             <td>
-                              <div className="cell-col">
-                                <div className="cell-header" />
-                                <input value={g.name} onChange={e => handleGuideChange(i, 'name', e.target.value)} placeholder="Name" />
-                              </div>
+                              <input value={g.name} onChange={e => handleGuideChange(i, 'name', e.target.value)} placeholder="Name" />
                             </td>
                             {teamDef.hasChannel && (
                               <td>
-                                <div className="cell-col">
-                                  <div className="cell-header" />
-                                  <select value={g.channel || 'voice'} onChange={e => handleGuideChange(i, 'channel', e.target.value)} className="channel-select">
-                                    <option value="voice">Voice</option>
-                                    <option value="messaging">Messaging</option>
-                                  </select>
-                                </div>
+                                <select value={g.channel || 'voice'} onChange={e => handleGuideChange(i, 'channel', e.target.value)} className="channel-select">
+                                  <option value="voice">Voice</option>
+                                  <option value="messaging">Messaging</option>
+                                </select>
                               </td>
                             )}
                             {metricDefs.map(def => {
@@ -794,7 +786,6 @@ export default function SupervisorView({ team, currentUser }) {
                               return (
                                 <td key={def.key}>
                                   <div className="cell-col">
-                                    <div className="cell-header" />
                                     <input type="number" value={g[def.key]} onChange={e => handleGuideChange(i, def.key, e.target.value)} placeholder={`0–${def.maxEntry || 100}`} step="0.01" min="0" max={def.maxEntry || 100} />
                                     {isQaMetric && (() => {
                                       const avg = inputQaAverages[g.name]
@@ -808,16 +799,20 @@ export default function SupervisorView({ team, currentUser }) {
                               )
                             })}
                             <td>
-                              <div className="cell-col">
-                                <div className="cell-header" />
-                                <input type="number" value={g.days} onChange={e => handleGuideChange(i, 'days', e.target.value)} placeholder="# days" min="0.1" step="0.1" />
-                              </div>
+                              <input type="number" value={g.days} onChange={e => handleGuideChange(i, 'days', e.target.value)} placeholder="# days" min="0.1" step="0.1" style={{ width: '80px' }} />
+                            </td>
+                            <td style={{ whiteSpace: 'nowrap' }}>
+                              {inputResults[i]
+                                ? <span style={{ color: scoreColor(inputResults[i].total), fontWeight: 600, fontSize: '0.9rem' }}>{fmtSigned(inputResults[i].total)}</span>
+                                : <span className="subtext">—</span>}
                             </td>
                             <td>
-                              <div className="cell-col">
-                                <div className="cell-header" />
-                                <button type="button" className="btn-remove" onClick={() => handleRemoveGuide(i)}>✕</button>
-                              </div>
+                              {inputResults[i]
+                                ? <span className={`pass-badge small ${inputResults[i].passing ? 'pass' : 'fail'}`}>{inputResults[i].passing ? 'Pass' : 'Fail'}</span>
+                                : null}
+                            </td>
+                            <td>
+                              <button type="button" className="btn-remove" onClick={() => handleRemoveGuide(i)}>✕</button>
                             </td>
                           </tr>
                         )
@@ -840,67 +835,6 @@ export default function SupervisorView({ team, currentUser }) {
                   </div>
                 </div>
 
-                {inputGuides.some(g => g.name) && (
-                  <div style={{ marginTop: '1.5rem' }}>
-                    <table className="score-table">
-                      <thead>
-                        <tr>
-                          <th>Name</th>
-                          {teamDef.hasChannel && <th>Channel</th>}
-                          {metricDefs.map(def => <th key={def.key}>{def.label}</th>)}
-                          <th>Total MIS</th>
-                          <th>Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {inputResults.map((r, i) => {
-                          const g = inputGuides[i]
-                          if (!g.name) return null
-                          if (r) {
-                            return (
-                              <tr key={i}>
-                                <td>{r.name}</td>
-                                {teamDef.hasChannel && <td>{r.channel === 'messaging' ? 'Messaging' : 'Voice'}</td>}
-                                {metricDefs.map(def => (
-                                  <td key={def.key}>
-                                    <div className="result-metric-cell">
-                                      <span className="result-actual">{fmtActual(def, r.actuals[def.key])}</span>
-                                      <span className="result-points" style={{ color: scoreColor(r[def.key]) }}>{fmtSigned(r[def.key])} pts</span>
-                                    </div>
-                                  </td>
-                                ))}
-                                <td style={{ color: scoreColor(r.total), fontWeight: 'bold' }}>{fmtSigned(r.total)}</td>
-                                <td><span className={`pass-badge small ${r.passing ? 'pass' : 'fail'}`}>{r.passing ? 'On Track' : 'Off Track'}</span></td>
-                              </tr>
-                            )
-                          }
-                          // Partial row
-                          const days = parseFloat(g.days)
-                          return (
-                            <tr key={i}>
-                              <td>{g.name}</td>
-                              {teamDef.hasChannel && <td>{g.channel === 'messaging' ? 'Messaging' : 'Voice'}</td>}
-                              {metricDefs.map(def => {
-                                let displayVal = null
-                                if (def.entryMode === 'perday') {
-                                  const val = g[`${def.key}Mode`] === 'total' && !isNaN(days) && days > 0
-                                    ? parseFloat(g[def.key]) / days : parseFloat(g[def.key])
-                                  displayVal = !isNaN(val) ? fmtActual(def, val) : null
-                                } else {
-                                  const val = parseFloat(g[def.key])
-                                  displayVal = !isNaN(val) ? fmtActual(def, val) : null
-                                }
-                                return <td key={def.key}>{displayVal ?? '—'}</td>
-                              })}
-                              <td>—</td>
-                              <td>—</td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
               </div>
             </>
           )}
@@ -915,11 +849,13 @@ export default function SupervisorView({ team, currentUser }) {
               Reviews are tracked here but are not included in MIS scores for this team.
             </div>
           )}
-          <div className="month-selects">
-            <label>Month</label>
-            <select value={qaMonth} onChange={e => setQaMonth(e.target.value)}>
-              {allInputMonths.map(m => <option key={m} value={m}>{fmtMonth(m)}</option>)}
-            </select>
+          <div className="history-controls">
+            <label className="history-month-select">
+              <span>Month</span>
+              <select value={qaMonth} onChange={e => setQaMonth(e.target.value)}>
+                {allInputMonths.map(m => <option key={m} value={m}>{fmtMonth(m)}</option>)}
+              </select>
+            </label>
           </div>
 
           <div className="qa-add-form">
@@ -938,7 +874,7 @@ export default function SupervisorView({ team, currentUser }) {
 
           {qaLoading ? <p className="subtext">Loading…</p>
             : qaError ? <p className="error-msg">{qaError}</p>
-            : groupedQaReviews.length === 0 ? <p className="subtext">No reviews for {fmtMonth(qaMonth)}.</p>
+            : groupedQaReviews.length === 0 ? <p className="subtext">No active guides on this team.</p>
             : (
               <div className="qa-guide-list">
                 {groupedQaReviews.map(({ name, reviews, avg }) => (
@@ -949,9 +885,9 @@ export default function SupervisorView({ team, currentUser }) {
                         {reviews.length} review{reviews.length !== 1 ? 's' : ''}
                         {reviews.length < 4 && ' — min 4 required'}
                       </span>
-                      <span className="qa-avg">Avg: {avg !== null ? avg.toFixed(2) : '—'}</span>
+                      <span className="qa-avg">{avg !== null ? `Avg: ${avg.toFixed(2)}` : ''}</span>
                     </div>
-                    <table className="qa-reviews-table">
+                    {reviews.length > 0 && <table className="qa-reviews-table">
                       <thead><tr><th>Date</th><th>Score</th><th></th></tr></thead>
                       <tbody>
                         {reviews.map(r => (
@@ -978,7 +914,7 @@ export default function SupervisorView({ team, currentUser }) {
                           </tr>
                         ))}
                       </tbody>
-                    </table>
+                    </table>}
                   </div>
                 ))}
               </div>
