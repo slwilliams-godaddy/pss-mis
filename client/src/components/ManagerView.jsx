@@ -31,7 +31,7 @@ const fmtMIS     = v => (v > 0 ? '+' : '') + v.toFixed(2)
 const misColor   = v => v > 0 ? '#22c55e' : v < 0 ? '#ef4444' : '#f59e0b'
 const fmtMetric  = (def, val) => `${def.prefix || ''}${val.toFixed(1)}${def.suffix || ''}`
 
-export default function ManagerView({ leaderUser, canManageUsers = true, onLogout, activeTab: externalTab = null, onTabChange = null }) {
+export default function ManagerView({ leaderUser, canManageUsers = true, onLogout, activeTab: externalTab = null, onTabChange = null, subTab = null, onSubTabChange = null }) {
   const [_internalTab, _setInternalTab] = useState('overview')
   const activeTab  = externalTab  ?? _internalTab
   const setActiveTab = onTabChange ?? _setInternalTab
@@ -66,9 +66,9 @@ export default function ManagerView({ leaderUser, canManageUsers = true, onLogou
         />
       )}
       {activeTab === 'titans'       && <div className="manager-overview"><TechTitans /></div>}
-      {activeTab === 'pss'          && <SupervisorView team="pss"         currentUser={leaderUser.username} />}
-      {activeTab === 'activations'  && <SupervisorView team="activations" currentUser={leaderUser.username} />}
-      {activeTab === 'escalations'  && <SupervisorView team="escalations" currentUser={leaderUser.username} />}
+      {activeTab === 'pss'          && <SupervisorView team="pss"         currentUser={leaderUser.username} activeTab={subTab} onTabChange={onSubTabChange} />}
+      {activeTab === 'activations'  && <SupervisorView team="activations" currentUser={leaderUser.username} activeTab={subTab} onTabChange={onSubTabChange} />}
+      {activeTab === 'escalations'  && <SupervisorView team="escalations" currentUser={leaderUser.username} activeTab={subTab} onTabChange={onSubTabChange} />}
       {activeTab === 'manage-users' && <ManageUsersTab currentUser={leaderUser.username} />}
       {activeTab === 'activity'     && <ActivityTab />}
 

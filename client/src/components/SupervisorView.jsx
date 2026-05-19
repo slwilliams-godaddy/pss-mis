@@ -48,7 +48,7 @@ function fmtActual(def, v) {
   return `${def.prefix || ''}${v.toFixed(1)}${def.suffix || ''}`
 }
 
-export default function SupervisorView({ team, currentUser }) {
+export default function SupervisorView({ team, currentUser, activeTab: externalTab = null, onTabChange = null }) {
   const teamDef = TEAM_DEFS[team] || TEAM_DEFS.pss
   const { metricDefs } = teamDef
 
@@ -95,7 +95,9 @@ export default function SupervisorView({ team, currentUser }) {
     return [{ configKey: def.configKey, field: 'target', label: def.label, prefix: def.prefix || '', suffix: def.suffix || '' }]
   }), [team])
 
-  const [tab, setTab] = useState('input')
+  const [_internalTab, _setInternalTab] = useState('input')
+  const tab    = externalTab    ?? _internalTab
+  const setTab = onTabChange ?? _setInternalTab
 
   // Config
   const [inputConfig, setInputConfig] = useState(null)
@@ -554,13 +556,15 @@ export default function SupervisorView({ team, currentUser }) {
 
   return (
     <div className="view-container">
-      <div className="tabs">
-        {TABS.map(([t, label]) => (
-          <button key={t} className={`tab-btn ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
-            {label}
-          </button>
-        ))}
-      </div>
+      {!externalTab && (
+        <div className="tabs">
+          {TABS.map(([t, label]) => (
+            <button key={t} className={`tab-btn ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ── INPUT TAB ── */}
       {tab === 'input' && (

@@ -420,6 +420,21 @@ export default function App() {
   const [navTab, setNavTab] = useState('overview')
   useEffect(() => { setNavTab('overview') }, [role])
 
+  const [subTab, setSubTab] = useState('input')
+  useEffect(() => { setSubTab('input') }, [navTab])
+
+  const TEAM_NAV = { pss: 'pss', activations: 'activations', escalations: 'escalations' }
+  const subNavTeam = TEAM_NAV[navTab] ?? null
+  const subNavTabs = subNavTeam
+    ? [
+        ['input', 'Input'],
+        ...(TEAM_DEFS[subNavTeam]?.hasQaReviews ? [['qa', TEAM_DEFS[subNavTeam].qaTabLabel]] : []),
+        ['team-trend', 'Team Trend'],
+        ['trend', 'Guide Trend'],
+        ['manage-team', 'Manage Team'],
+      ]
+    : []
+
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
     localStorage.setItem('pss-mis:theme', theme)
@@ -924,12 +939,25 @@ export default function App() {
           ))}
         </nav>
       )}
+      {subNavTabs.length > 0 && (
+        <nav className="app-subnav">
+          {subNavTabs.map(([id, label]) => (
+            <button
+              key={id}
+              className={`subnav-tab${subTab === id ? ' active' : ''}`}
+              onClick={() => setSubTab(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      )}
       <main className={navTabs.length ? 'main--no-top-pad' : ''}>
         {role === 'guide'
           ? <GuideView team={guideUser?.team} guideUser={guideUser?.name} />
           : role === 'manager'
-            ? <ManagerView leaderUser={managerUser} canManageUsers={true} activeTab={navTab} onTabChange={setNavTab} />
-            : <ManagerView leaderUser={supervisorUser} canManageUsers={false} activeTab={navTab} onTabChange={setNavTab} />
+            ? <ManagerView leaderUser={managerUser} canManageUsers={true} activeTab={navTab} onTabChange={setNavTab} subTab={subTab} onSubTabChange={setSubTab} />
+            : <ManagerView leaderUser={supervisorUser} canManageUsers={false} activeTab={navTab} onTabChange={setNavTab} subTab={subTab} onSubTabChange={setSubTab} />
         }
       </main>
     </div>

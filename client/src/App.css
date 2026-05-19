@@ -187,6 +187,28 @@ body {
 .nav-tab.active { color: var(--text); border-bottom-color: var(--blue); }
 .nav-tab:hover:not(.active) { color: var(--text); }
 
+.app-subnav {
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  padding: 0 2rem;
+}
+.subnav-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 0.5rem 0.85rem;
+  margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.subnav-tab.active { color: var(--text); border-bottom-color: var(--blue); }
+.subnav-tab:hover:not(.active) { color: var(--text); }
+
 .header-actions { display: flex; align-items: center; gap: 0.6rem; }
 
 .header-user {
@@ -510,11 +532,10 @@ input:focus { outline: none; border-color: var(--blue); }
 .metric-range-labels { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-muted); }
 .metric-score { text-align: right; font-weight: 700; font-size: 1rem; }
 
-/* TABS */
+/* TABS (used only when SupervisorView renders standalone without app-level sub-nav) */
 .tabs {
   display: flex;
   gap: 0;
-  background: var(--surface);
   border-bottom: 1px solid var(--border);
   padding: 0 0.25rem;
 }
