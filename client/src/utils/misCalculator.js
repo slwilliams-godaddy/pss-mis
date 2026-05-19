@@ -6,6 +6,38 @@ const SCORE_RAILS = {
   qa:  { min: -20, max: 20 },
 }
 
+// Generic engine — caller resolves TAM targets / channel splits before passing configByKey
+// configByKey: { [def.configKey]: { target: number } }
+export function calculateMISGeneric(actuals, configByKey, metricDefs) {
+  let total = 0
+  const result = {}
+  for (const def of metricDefs) {
+    const target = configByKey[def.configKey]?.target
+    if (!target) { result[def.key] = 0; continue }
+    const raw = ((actuals[def.key] / target) - 1) * 100 * def.weight
+    result[def.key] = Math.round(Math.min(def.rail.max, Math.max(def.rail.min, raw)) * 100) / 100
+    total += result[def.key]
+  }
+  result.total = Math.round(total * 100) / 100
+  result.passing = total > 0
+  return result
+}
+
+export function calculateUnboundedMISGeneric(actuals, configByKey, metricDefs) {
+  let total = 0
+  const result = {}
+  for (const def of metricDefs) {
+    const target = configByKey[def.configKey]?.target
+    if (!target) { result[def.key] = 0; continue }
+    const raw = ((actuals[def.key] / target) - 1) * 100 * def.weight
+    result[def.key] = Math.round(raw * 100) / 100
+    total += result[def.key]
+  }
+  result.total = Math.round(total * 100) / 100
+  return result
+}
+
+// PSS backward-compat wrappers
 function scoreMetric(actual, target, rail, multiplier) {
   if (!target) return 0
   const raw = ((actual / target) - 1) * 100 * multiplier
@@ -30,7 +62,6 @@ export function calculateMIS(actuals, config) {
   const gcr = scoreMetric(actuals.gcr, config.gcr.target, SCORE_RAILS.gcr, MULTIPLIERS.gcr)
   const qa  = scoreMetric(actuals.qa,  config.qa.target,  SCORE_RAILS.qa,  MULTIPLIERS.qa)
   const total = cpd + gcr + qa
-
   return {
     cpd: Math.round(cpd * 100) / 100,
     gcr: Math.round(gcr * 100) / 100,

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getTechTitansData, getArchivedMonths } from '../utils/storage'
+import { TEAM_DEFS } from '../utils/teamConfig'
 
 const SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
@@ -95,6 +96,7 @@ export default function TechTitans({ guideUser, anonymize = false }) {
                   <tr>
                     <th className="tt-th-rank">Rank</th>
                     <th>Guide</th>
+                    <th>Team</th>
                     {months.map(m => (
                       <th key={m} className="tt-th-month">{SHORT_MONTHS[+m.split('-')[1] - 1]}</th>
                     ))}
@@ -109,6 +111,7 @@ export default function TechTitans({ guideUser, anonymize = false }) {
                       <tr key={guide.name} className={`tt-row${isMe ? ' tt-row-me' : ''}`}>
                         <td className="tt-rank">{rankLabel(idx)}</td>
                         <td className="tt-name">{showName ? guide.name : <span className="tt-anon">—</span>}</td>
+                        <td><span className={`tt-team-badge tt-team-${guide.team}`}>{TEAM_DEFS[guide.team]?.label || guide.team}</span></td>
                         {months.map(m => {
                           const ms = guide.months[m]
                           return (

@@ -9,9 +9,9 @@ export default function PasswordGate({ onSuccess, onClose }) {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    getSupervisorUsernames().then(names => {
-      setUsernames(names)
-      if (names.length === 1) setUsername(names[0])
+    getSupervisorUsernames().then(users => {
+      setUsernames(users)
+      if (users.length === 1) setUsername(users[0].username)
     }).catch(() => {})
   }, [])
 
@@ -20,9 +20,9 @@ export default function PasswordGate({ onSuccess, onClose }) {
     setError('')
     setLoading(true)
     try {
-      const ok = await checkUser(username, password)
-      if (ok) {
-        onSuccess(username)
+      const result = await checkUser(username, password)
+      if (result) {
+        onSuccess(result)
       } else {
         setError('Incorrect username or password.')
       }
@@ -52,7 +52,7 @@ export default function PasswordGate({ onSuccess, onClose }) {
             disabled={loading}
           >
             <option value="" disabled>Select user</option>
-            {usernames.map(u => <option key={u} value={u}>{u}</option>)}
+            {usernames.map(u => <option key={u.username} value={u.username}>{u.username}</option>)}
           </select>
           <input
             type="password"

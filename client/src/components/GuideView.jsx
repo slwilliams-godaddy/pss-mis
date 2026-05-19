@@ -1,62 +1,63 @@
-import { useState, useEffect } from 'react'
-import { calculateMIS, SCORE_RAILS } from '../utils/misCalculator'
+import { useState, useEffect, useMemo } from 'react'
+import { calculateMISGeneric } from '../utils/misCalculator'
+import { TEAM_DEFS, resolveConfigByKey } from '../utils/teamConfig'
 import ScoreGauge from './ScoreGauge'
 import MetricRow from './MetricRow'
 import TechTitans from './TechTitans'
-import { getGuideHistory, getConfigMonths, getConfigForMonth } from '../utils/storage'
+import { getGuideHistory, getConfigMonths, getConfigForMonth, getConfig } from '../utils/storage'
 
-// ── Math helpers ────────────────────────────────────────────────────────────
+// ── Math helpers ─────────────────────────────────────────────────────────────
 
-function computeGuidance(cpd, gcr, qa, qaCount, qaRemaining, W, R, config) {
-  const current = calculateMIS({ cpd, gcr, qa }, config)
+function neededFutureQaAvg(target, currentAvg, qaCount, qaRemaining) {
+  return qaRemaining > 0
+    ? (target * (qaCount + qaRemaining) - currentAvg * qaCount) / qaRemaining
+    : null
+}
+
+function computeGuidance(actuals, qaCount, qaRemaining, W, R, resolvedConfig, metricDefs, teamDef) {
+  const current = calculateMISGeneric(actuals, resolvedConfig, metricDefs)
   if (R <= 0) return { current, noRemaining: true }
-
   const totalDays = W + R
-
-  const neededRate = (finalVal, currentRate) =>
-    (finalVal * totalDays - currentRate * W) / R
-
-  const neededFutureQaAvg = (finalQa) =>
-    qaRemaining > 0
-      ? (finalQa * (qaCount + qaRemaining) - qa * qaCount) / qaRemaining
+  const neededRate = (finalVal, currentRate) => (finalVal * totalDays - currentRate * W) / R
+  const toTarget = {}, maximize = {}
+  for (const def of metricDefs) {
+    const cfg = resolvedConfig[def.configKey]
+    if (!cfg) continue
+    const cur = actuals[def.key] ?? 0
+    const impliedMax = cfg.target != null
+      ? cfg.target * (1 + def.rail.max / (100 * def.weight))
       : null
-
-  return {
-    current,
-    toTarget: {
-      cpd:   neededRate(config.cpd.target, cpd),
-      gcr:   neededRate(config.gcr.target, gcr),
-      qaAvg: neededFutureQaAvg(config.qa.target),
-    },
-    maximize: {
-      cpd:   neededRate(config.cpd.max, cpd),
-      gcr:   neededRate(config.gcr.max, gcr),
-      qaAvg: neededFutureQaAvg(config.qa.max),
-    },
+    const maxTarget = cfg.max ?? impliedMax
+    if (def.isQuality && !teamDef.qaNotInMis) {
+      toTarget[def.key] = neededFutureQaAvg(cfg.target, cur, qaCount, qaRemaining)
+      maximize[def.key] = maxTarget != null ? neededFutureQaAvg(maxTarget, cur, qaCount, qaRemaining) : null
+    } else {
+      toTarget[def.key] = neededRate(cfg.target, cur)
+      maximize[def.key] = maxTarget != null ? neededRate(maxTarget, cur) : null
+    }
   }
+  return { current, toTarget, maximize }
 }
 
 // ── Guidance row components ──────────────────────────────────────────────────
 
-function RateGuidanceRow({ label, current, needed, daysRemaining, prefix = '', ceiling, aspirational = false }) {
-  const fmt = v => `${prefix}${v.toFixed(2)}/day`
-  const fmtTotal = v => prefix ? `${prefix}${Math.round(v)}` : `${Math.ceil(v)}`
+function GuidanceRow({ label, current, needed, daysRemaining, fmt, ceiling = Infinity, aspirational = false }) {
   const greenThreshold = aspirational ? current * 1.25 : current + 0.005
   let cls, msg
   if (needed <= 0) {
     cls = 'good'
-    msg = `Your current pace already covers this with room to spare.`
+    msg = 'Your current pace already covers this with room to spare.'
   } else if (needed > ceiling) {
     cls = 'bad'
     msg = `Not achievable — you'd need ${fmt(needed)} but the ceiling is ${fmt(ceiling)}.`
   } else if (needed <= greenThreshold) {
     cls = 'good'
     msg = aspirational && needed > current + 0.005
-      ? `Need ${fmt(needed)} for the remaining ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} — ${fmtTotal(needed * daysRemaining)} total (currently ${fmt(current)}).`
+      ? `Need ${fmt(needed)} for the remaining ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} (currently ${fmt(current)}).`
       : `Maintain your current pace of ${fmt(current)} — you're already on track.`
   } else {
     cls = 'warn'
-    msg = `Need ${fmt(needed)} for the remaining ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} — ${fmtTotal(needed * daysRemaining)} total (currently ${fmt(current)}).`
+    msg = `Need ${fmt(needed)} for the remaining ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} (currently ${fmt(current)}).`
   }
   return (
     <div className={`guidance-row guidance-${cls}`}>
@@ -66,15 +67,15 @@ function RateGuidanceRow({ label, current, needed, daysRemaining, prefix = '', c
   )
 }
 
-function QaGuidanceRow({ currentAvg, qaCount, qaRemaining, needed, qaTarget }) {
+function QaGuidanceRow({ label = 'QA', currentAvg, qaCount, qaRemaining, needed, qaTarget }) {
   const evalWord = `${qaRemaining} remaining eval${qaRemaining !== 1 ? 's' : ''}`
   let cls, msg
   if (needed === null) {
     cls = 'neutral'
-    msg = `Enter expected remaining evals above to see QA guidance.`
+    msg = 'Enter expected remaining evals above to see guidance.'
   } else if (needed <= 0) {
     cls = 'good'
-    msg = `Your current QA average already covers this with room to spare.`
+    msg = 'Your current average already covers this with room to spare.'
   } else if (needed > 100) {
     const best = (currentAvg * qaCount + 100 * qaRemaining) / (qaCount + qaRemaining)
     if (best > qaTarget) {
@@ -82,7 +83,7 @@ function QaGuidanceRow({ currentAvg, qaCount, qaRemaining, needed, qaTarget }) {
       msg = `Can't reach the maximum from here — scoring 100% on your ${evalWord} gives a best possible average of ${best.toFixed(1)}%.`
     } else {
       cls = 'bad'
-      msg = `Not achievable — even scoring 100% on your ${evalWord}, your best possible QA average is ${best.toFixed(1)}%, which is below the ${qaTarget}% target.`
+      msg = `Not achievable — even scoring 100% on your ${evalWord}, your best possible average is ${best.toFixed(1)}%, which is below the ${qaTarget}% target.`
     }
   } else if (needed <= currentAvg + 0.05) {
     cls = 'good'
@@ -93,7 +94,7 @@ function QaGuidanceRow({ currentAvg, qaCount, qaRemaining, needed, qaTarget }) {
   }
   return (
     <div className={`guidance-row guidance-${cls}`}>
-      <span className="guidance-label">QA</span>
+      <span className="guidance-label">{label}</span>
       <span className="guidance-text">{msg}</span>
     </div>
   )
@@ -106,6 +107,8 @@ const fmtMonth = (m) => { const [y, mm] = m.split('-'); return `${MONTH_NAMES[+m
 const fmtSigned = (v) => { const n = parseFloat(Number(v).toFixed(2)); return (n > 0 ? '+' : '') + n }
 const scoreColor = (s) => s > 0 ? '#22c55e' : s === 0 ? '#f59e0b' : '#ef4444'
 const trendDelta = (arr) => arr.length >= 2 ? arr[arr.length - 1] - arr[arr.length - 2] : null
+
+const SPARKLINE_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#a78bfa']
 
 function Sparkline({ values, color, width = 130, height = 40 }) {
   if (values.length < 2) return <span className="sparkline-empty">not enough data</span>
@@ -130,25 +133,26 @@ function Sparkline({ values, color, width = 130, height = 40 }) {
   )
 }
 
+function fmtActual(def, v) {
+  if (def.entryMode === 'percent') return `${v.toFixed(1)}${def.suffix}`
+  return `${def.prefix || ''}${v.toFixed(2)}${def.suffix}`
+}
 
-function HistoryPanel({ guideUser }) {
+function HistoryPanel({ guideUser, team }) {
+  const teamDef = TEAM_DEFS[team] || TEAM_DEFS.pss
+  const { metricDefs } = teamDef
   const [rows, setRows] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
     setLoading(true)
-    getGuideHistory(guideUser)
+    setError('')
+    getGuideHistory(guideUser, team)
       .then(data => { setRows(data); setLoading(false) })
       .catch(err => { setError(err.message || 'Failed to load scores.'); setLoading(false) })
-  }, [guideUser])
+  }, [guideUser, team])
 
-  const cpdPts  = (rows || []).map(r => r.cpd)
-  const gcrPts  = (rows || []).map(r => r.gcr)
-  const qaPts   = (rows || []).map(r => r.qa)
-  const cpdVals = (rows || []).map(r => r.actuals.cpd)
-  const gcrVals = (rows || []).map(r => r.actuals.gcr)
-  const qaVals  = (rows || []).map(r => r.actuals.qa)
   const misVals = (rows || []).map(r => r.total)
 
   return (
@@ -163,53 +167,79 @@ function HistoryPanel({ guideUser }) {
       {rows && rows.length > 0 && (
         <>
           <div className="trend-cards">
-            {[
-              { label: 'CPD',       sparkVals: cpdPts, dispVals: cpdVals, ptsVals: cpdPts, color: '#3b82f6', fmt: v => `${v.toFixed(2)}/day`, dFmt: v => v.toFixed(2) },
-              { label: 'GCR',       sparkVals: gcrPts, dispVals: gcrVals, ptsVals: gcrPts, color: '#22c55e', fmt: v => `$${v.toFixed(2)}/day`, dFmt: v => `$${v.toFixed(2)}` },
-              { label: 'QA',        sparkVals: qaPts,  dispVals: qaVals,  ptsVals: qaPts,  color: '#f59e0b', fmt: v => `${v.toFixed(1)}%`, dFmt: v => `${v.toFixed(1)}%` },
-              { label: 'Total MIS', sparkVals: misVals, dispVals: misVals, ptsVals: null,  color: scoreColor(misVals[misVals.length - 1]), fmt: v => fmtSigned(v), dFmt: v => fmtSigned(v) },
-            ].map(({ label, sparkVals, dispVals, ptsVals, color, fmt, dFmt }) => {
-              const d    = trendDelta(dispVals)
-              const dPts = ptsVals ? trendDelta(ptsVals) : null
+            {metricDefs.map((def, i) => {
+              const color = SPARKLINE_COLORS[i % SPARKLINE_COLORS.length]
+              const ptsVals = rows.map(r => r[def.key])
+              const actualVals = rows.map(r => r.actuals[def.key])
+              const d = trendDelta(actualVals)
+              const dPts = trendDelta(ptsVals)
+              const latest = actualVals[actualVals.length - 1]
+              const latestPts = ptsVals[ptsVals.length - 1]
               return (
-                <div key={label} className="trend-card">
-                  <span className="trend-card-label">{label}</span>
-                  <Sparkline values={sparkVals} color={color} />
+                <div key={def.key} className="trend-card">
+                  <span className="trend-card-label">{def.label}</span>
+                  <Sparkline values={ptsVals} color={color} />
                   <div className="trend-card-footer">
-                    <span className="trend-card-latest" style={{ color }}>{fmt(dispVals[dispVals.length - 1])}</span>
+                    <span className="trend-card-latest" style={{ color }}>{fmtActual(def, latest)}</span>
                     {d != null && (
                       <span className="trend-delta" style={{ color: d > 0 ? '#22c55e' : d < 0 ? '#ef4444' : '#f59e0b' }}>
-                        {d > 0 ? '↑' : d < 0 ? '↓' : '→'} {dFmt(Math.abs(d))}
+                        {d > 0 ? '↑' : d < 0 ? '↓' : '→'} {fmtActual(def, Math.abs(d))}
                       </span>
                     )}
                   </div>
-                  {ptsVals && (
-                    <div className="trend-card-pts">
-                      <span className="trend-card-pts-val" style={{ color: scoreColor(ptsVals[ptsVals.length - 1]) }}>
-                        {fmtSigned(ptsVals[ptsVals.length - 1])} pts
+                  <div className="trend-card-pts">
+                    <span className="trend-card-pts-val" style={{ color: scoreColor(latestPts) }}>
+                      {fmtSigned(latestPts)} pts
+                    </span>
+                    {dPts != null && (
+                      <span className="trend-delta" style={{ color: dPts > 0 ? '#22c55e' : dPts < 0 ? '#ef4444' : '#f59e0b' }}>
+                        {dPts > 0 ? '↑' : dPts < 0 ? '↓' : '→'} {parseFloat(Math.abs(dPts).toFixed(2))} pts
                       </span>
-                      {dPts != null && (
-                        <span className="trend-delta" style={{ color: dPts > 0 ? '#22c55e' : dPts < 0 ? '#ef4444' : '#f59e0b' }}>
-                          {dPts > 0 ? '↑' : dPts < 0 ? '↓' : '→'} {parseFloat(Math.abs(dPts).toFixed(2))} pts
-                        </span>
-                      )}
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               )
             })}
+            {(() => {
+              const d = trendDelta(misVals)
+              const latest = misVals[misVals.length - 1]
+              return (
+                <div className="trend-card">
+                  <span className="trend-card-label">Total MIS</span>
+                  <Sparkline values={misVals} color={scoreColor(latest)} />
+                  <div className="trend-card-footer">
+                    <span className="trend-card-latest" style={{ color: scoreColor(latest) }}>{fmtSigned(latest)}</span>
+                    {d != null && (
+                      <span className="trend-delta" style={{ color: d > 0 ? '#22c55e' : d < 0 ? '#ef4444' : '#f59e0b' }}>
+                        {d > 0 ? '↑' : d < 0 ? '↓' : '→'} {parseFloat(Math.abs(d).toFixed(2))}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
           </div>
+
           <table className="score-table">
             <thead>
-              <tr><th>Month</th><th>CPD</th><th>GCR</th><th>QA</th><th>Total MIS</th><th>Uncapped</th><th>Status</th></tr>
+              <tr>
+                <th>Month</th>
+                {metricDefs.map(def => <th key={def.key}>{def.label}</th>)}
+                <th>Total MIS</th><th>Uncapped</th><th>Status</th>
+              </tr>
             </thead>
             <tbody>
               {rows.map(r => (
                 <tr key={r.month}>
                   <td style={{ whiteSpace: 'nowrap' }}>{fmtMonth(r.month)}</td>
-                  <td><div className="result-metric-cell"><span className="result-actual">{r.actuals.cpd.toFixed(2)}/day</span><span className="result-points" style={{ color: scoreColor(r.cpd) }}>{fmtSigned(r.cpd)} pts</span></div></td>
-                  <td><div className="result-metric-cell"><span className="result-actual">${r.actuals.gcr.toFixed(2)}/day</span><span className="result-points" style={{ color: scoreColor(r.gcr) }}>{fmtSigned(r.gcr)} pts</span></div></td>
-                  <td><div className="result-metric-cell"><span className="result-actual">{r.actuals.qa.toFixed(1)}%</span><span className="result-points" style={{ color: scoreColor(r.qa) }}>{fmtSigned(r.qa)} pts</span></div></td>
+                  {metricDefs.map(def => (
+                    <td key={def.key}>
+                      <div className="result-metric-cell">
+                        <span className="result-actual">{fmtActual(def, r.actuals[def.key])}</span>
+                        <span className="result-points" style={{ color: scoreColor(r[def.key]) }}>{fmtSigned(r[def.key])} pts</span>
+                      </div>
+                    </td>
+                  ))}
                   <td style={{ color: scoreColor(r.total), fontWeight: 'bold' }}>{fmtSigned(r.total)}</td>
                   <td className="history-uncapped" style={{ color: scoreColor(r.unboundedTotal) }}>{fmtSigned(r.unboundedTotal)}</td>
                   <td><span className={`pass-badge small ${r.passing ? 'pass' : 'fail'}`}>{r.passing ? 'On Track' : 'Off Track'}</span></td>
@@ -225,87 +255,108 @@ function HistoryPanel({ guideUser }) {
 
 // ── Main component ───────────────────────────────────────────────────────────
 
-const MONTH_NAMES_CALC = ['January','February','March','April','May','June','July','August','September','October','November','December']
-const fmtMonthCalc = (m) => { const [y, mm] = m.split('-'); return `${MONTH_NAMES_CALC[+mm - 1]} ${y}` }
+export default function GuideView({ team, guideUser }) {
+  const teamDef = TEAM_DEFS[team] || TEAM_DEFS.pss
+  const { metricDefs } = teamDef
 
-export default function GuideView({ config, guideUser }) {
   const [activeTab, setActiveTab] = useState('calculator')
-  const [cpdMode, setCpdMode] = useState('perday')
-  const [gcrMode, setGcrMode] = useState('perday')
-  const [fields, setFields] = useState({ cpd: '', gcr: '', qa: '' })
-  const [daysWorked, setDaysWorked] = useState('')
-  const [daysRemaining, setDaysRemaining] = useState('')
-  const [qaCount, setQaCount] = useState('')
-  const [qaRemainingEvals, setQaRemainingEvals] = useState('')
-  const [result, setResult] = useState(null)
-  const [guidance, setGuidance] = useState(null)
-  const [usedActuals, setUsedActuals] = useState(null)
-  const [usedDays, setUsedDays] = useState(null)
-  const [usedQa, setUsedQa] = useState(null)
-  const [channel, setChannel] = useState('voice')
 
+  // Config — fetched on mount; not passed as prop
+  const [config, setConfig] = useState(null)
   const [configMonths, setConfigMonths] = useState([])
-  const [selectedMonth, setSelectedMonth] = useState(config?.month ?? '')
-  const [activeConfig, setActiveConfig] = useState(config)
+  const [selectedMonth, setSelectedMonth] = useState('')
+  const [activeConfig, setActiveConfig] = useState(null)
 
   useEffect(() => {
-    getConfigMonths().then(setConfigMonths).catch(() => {})
-  }, [])
+    getConfig(team).then(cfg => {
+      setConfig(cfg); setActiveConfig(cfg); setSelectedMonth(cfg.month)
+    }).catch(() => {})
+    getConfigMonths(team).then(setConfigMonths).catch(() => {})
+  }, [team])
 
   useEffect(() => {
-    if (!selectedMonth) return
-    if (selectedMonth === config?.month) { setActiveConfig(config); return }
-    getConfigForMonth(selectedMonth)
-      .then(cfg => { if (cfg) setActiveConfig(cfg) })
-      .catch(() => {})
-  }, [selectedMonth, config])
+    if (!selectedMonth || !config) return
+    if (selectedMonth === config.month) { setActiveConfig(config); return }
+    getConfigForMonth(selectedMonth, team).then(cfg => { if (cfg) setActiveConfig(cfg) }).catch(() => {})
+  }, [selectedMonth, config, team])
+
+  // Per-metric field state, keyed by def.key
+  const initFields = (defs) => Object.fromEntries(defs.map(d => [d.key, '']))
+  const initModes  = (defs) => Object.fromEntries(defs.filter(d => d.entryMode === 'perday').map(d => [d.key, 'perday']))
+
+  const [fields, setFields]         = useState(() => initFields(metricDefs))
+  const [fieldModes, setFieldModes] = useState(() => initModes(metricDefs))
+  const [channel, setChannel]       = useState('voice')
+  const [tamRole, setTamRole]       = useState('TAM 1')
+  const [daysWorked, setDaysWorked]         = useState('')
+  const [daysRemaining, setDaysRemaining]   = useState('')
+  const [qaCount, setQaCount]               = useState('')
+  const [qaRemainingEvals, setQaRemainingEvals] = useState('')
+  const [result, setResult]     = useState(null)
+  const [guidance, setGuidance] = useState(null)
+  const [snapshot, setSnapshot] = useState(null) // frozen actuals + context at calculation time
+
+  // Reset field state on team change
+  useEffect(() => {
+    setFields(initFields(metricDefs))
+    setFieldModes(initModes(metricDefs))
+    setResult(null); setGuidance(null); setSnapshot(null)
+  }, [team])
 
   const W = parseFloat(daysWorked)
   const R = parseFloat(daysRemaining)
 
-  const clearResult = () => { setResult(null); setGuidance(null) }
+  const clearResult = () => { setResult(null); setGuidance(null); setSnapshot(null) }
 
-  const handleChange = (e) => {
-    setFields({ ...fields, [e.target.name]: e.target.value })
-    clearResult()
-  }
+  const resolvedConfig = useMemo(() => {
+    if (!activeConfig) return {}
+    return resolveConfigByKey(metricDefs, activeConfig, channel, tamRole)
+  }, [activeConfig, channel, tamRole, metricDefs])
 
-  const switchMode = (metric, mode) => {
-    if (metric === 'cpd') setCpdMode(mode)
-    else setGcrMode(mode)
-    setFields(f => ({ ...f, [metric]: '' }))
-    clearResult()
-  }
-
-  const computedCPD = cpdMode === 'total' && fields.cpd && W > 0
-    ? (parseFloat(fields.cpd) / W).toFixed(2) : null
-  const computedGCR = gcrMode === 'total' && fields.gcr && W > 0
-    ? (parseFloat(fields.gcr) / W).toFixed(2) : null
+  const qualityDef = metricDefs.find(d => d.isQuality)
 
   const handleCalculate = (e) => {
     e.preventDefault()
     if (isNaN(W) || W <= 0) return
     if (isNaN(R) || R < 0) return
 
-    const cpd = cpdMode === 'total' ? parseFloat(fields.cpd) / W : parseFloat(fields.cpd)
-    const gcr = gcrMode === 'total' ? parseFloat(fields.gcr) / W : parseFloat(fields.gcr)
-    const qa  = parseFloat(fields.qa)
-    if ([cpd, gcr, qa].some(isNaN)) return
+    const actuals = {}
+    for (const def of metricDefs) {
+      const raw = def.entryMode === 'perday' && fieldModes[def.key] === 'total'
+        ? parseFloat(fields[def.key]) / W
+        : parseFloat(fields[def.key])
+      if (isNaN(raw)) return
+      actuals[def.key] = raw
+    }
 
     const qaCt  = parseInt(qaCount) || 0
     const qaRem = parseInt(qaRemainingEvals) || 0
 
-    const gcrConfig = channel === 'messaging' ? activeConfig.gcrMessaging : activeConfig.gcrVoice
-    const effectiveConfig = { ...activeConfig, gcr: gcrConfig }
-    const mis = calculateMIS({ cpd, gcr, qa }, effectiveConfig)
-    const g   = computeGuidance(cpd, gcr, qa, qaCt, qaRem, W, R, effectiveConfig)
+    const mis = calculateMISGeneric(actuals, resolvedConfig, metricDefs)
+    const g   = computeGuidance(actuals, qaCt, qaRem, W, R, resolvedConfig, metricDefs, teamDef)
 
-    setUsedActuals({ cpd, gcr, qa })
-    setUsedDays({ W, R })
-    setUsedQa({ count: qaCt, remaining: qaRem })
     setResult(mis)
     setGuidance(g)
+    setSnapshot({ actuals, W, R, qaCount: qaCt, qaRemaining: qaRem })
   }
+
+  const hasMaximize = result && guidance?.maximize
+    && Object.values(guidance.maximize).some(v => v !== null)
+
+  const guidanceFmt = (def) => def.entryMode === 'perday'
+    ? (v) => `${def.prefix || ''}${v.toFixed(2)}${def.suffix}`
+    : (v) => `${v.toFixed(1)}${def.suffix}`
+
+  const targetHint = (def, mode) => {
+    const cfg = resolvedConfig[def.configKey]
+    if (!cfg) return null
+    if (def.entryMode === 'perday' && mode === 'total' && W > 0) {
+      return `${def.prefix || ''}${(cfg.target * W).toFixed(0)} by now`
+    }
+    return `${def.prefix || ''}${cfg.target}${def.suffix}`
+  }
+
+  const nonQualityDefs = metricDefs.filter(d => !d.isQuality)
 
   return (
     <div className="view-container">
@@ -322,10 +373,7 @@ export default function GuideView({ config, guideUser }) {
       </div>
 
       {activeTab === 'titans' && <TechTitans guideUser={guideUser} anonymize />}
-
-      {activeTab === 'lookup' && (
-        <HistoryPanel guideUser={guideUser} />
-      )}
+      {activeTab === 'lookup' && <HistoryPanel guideUser={guideUser} team={team} />}
 
       {activeTab === 'calculator' && (
         <>
@@ -333,45 +381,53 @@ export default function GuideView({ config, guideUser }) {
             <span className="subtext">Month</span>
             <select value={selectedMonth} onChange={e => { setSelectedMonth(e.target.value); clearResult() }}>
               {configMonths.length === 0 && config?.month && (
-                <option value={config.month}>{fmtMonthCalc(config.month)}</option>
+                <option value={config.month}>{fmtMonth(config.month)}</option>
               )}
-              {configMonths.map(m => (
-                <option key={m} value={m}>{fmtMonthCalc(m)}</option>
-              ))}
+              {configMonths.map(m => <option key={m} value={m}>{fmtMonth(m)}</option>)}
             </select>
           </div>
 
           <form onSubmit={handleCalculate} className="input-form">
 
-            {/* Row 0: Channel */}
-            <div className="guide-channel-row">
-              <span className="guide-channel-label">Channel</span>
-              <div className="inline-toggle">
-                <button type="button" className={`toggle-btn ${channel === 'voice' ? 'active' : ''}`} onClick={() => { setChannel('voice'); clearResult() }}>Voice</button>
-                <button type="button" className={`toggle-btn ${channel === 'messaging' ? 'active' : ''}`} onClick={() => { setChannel('messaging'); clearResult() }}>Messaging</button>
+            {/* Channel toggle — PSS only */}
+            {teamDef.hasChannel && (
+              <div className="guide-channel-row">
+                <span className="guide-channel-label">Channel</span>
+                <div className="inline-toggle">
+                  <button type="button" className={`toggle-btn ${channel === 'voice' ? 'active' : ''}`} onClick={() => { setChannel('voice'); clearResult() }}>Voice</button>
+                  <button type="button" className={`toggle-btn ${channel === 'messaging' ? 'active' : ''}`} onClick={() => { setChannel('messaging'); clearResult() }}>Messaging</button>
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Row 1: Days */}
+            {/* TAM Role selector — Escalations only */}
+            {team === 'escalations' && (
+              <div className="guide-channel-row">
+                <span className="guide-channel-label">TAM Role</span>
+                <select value={tamRole} onChange={e => { setTamRole(e.target.value); clearResult() }}>
+                  <option value="TAM 1">TAM 1</option>
+                  <option value="TAM 2">TAM 2</option>
+                  <option value="TAM 3">TAM 3</option>
+                </select>
+              </div>
+            )}
+
+            {/* Days row */}
             <div className="form-grid">
               <label className="field-narrow">
                 <div className="field-header"><span>Days Worked</span></div>
                 <input
-                  type="number"
-                  value={daysWorked}
+                  type="number" value={daysWorked}
                   onChange={e => { setDaysWorked(e.target.value); clearResult() }}
-                  placeholder="e.g. 15"
-                  min="0" step="0.1" required
+                  placeholder="e.g. 15" min="0" step="0.1" required
                 />
               </label>
               <label className="field-narrow">
                 <div className="field-header"><span>Days Remaining</span></div>
                 <input
-                  type="number"
-                  value={daysRemaining}
+                  type="number" value={daysRemaining}
                   onChange={e => { setDaysRemaining(e.target.value); clearResult() }}
-                  placeholder="e.g. 6"
-                  min="0" step="0.1" required
+                  placeholder="e.g. 6" min="0" step="0.1" required
                 />
               </label>
               <div className="field-days-total">
@@ -381,85 +437,86 @@ export default function GuideView({ config, guideUser }) {
               </div>
             </div>
 
-            {/* Row 2: CPD + GCR */}
+            {/* Non-quality metric fields */}
             <div className="form-grid">
-              <label>
-                <div className="field-header spaced">
-                  <span>{cpdMode === 'total' ? 'Total Contacts So Far' : 'CPD (Contacts Per Day)'}</span>
-                  <div className="inline-toggle">
-                    <button type="button" className={`toggle-btn ${cpdMode === 'perday' ? 'active' : ''}`} onClick={() => switchMode('cpd', 'perday')}>Per Day</button>
-                    <button type="button" className={`toggle-btn ${cpdMode === 'total' ? 'active' : ''}`} onClick={() => switchMode('cpd', 'total')}>Total So Far</button>
-                  </div>
-                </div>
-                <input
-                  type="number" name="cpd" value={fields.cpd} onChange={handleChange}
-                  placeholder={cpdMode === 'total' ? 'Total contacts so far' : 'Contacts per day'}
-                  step="0.01" required
-                />
-                <span className="target-hint">
-                  Target: {cpdMode === 'total' && W > 0
-                    ? `${(activeConfig?.cpd.target * W).toFixed(0)} contacts by now`
-                    : `${activeConfig?.cpd.target}/day`}
-                </span>
-                {computedCPD && <span className="computed-hint">= {computedCPD} contacts/day</span>}
-              </label>
-
-              <label>
-                <div className="field-header spaced">
-                  <span>{gcrMode === 'total' ? 'Total GCR So Far ($)' : 'GCR (Gross Cash Revenue Per Day)'}</span>
-                  <div className="inline-toggle">
-                    <button type="button" className={`toggle-btn ${gcrMode === 'perday' ? 'active' : ''}`} onClick={() => switchMode('gcr', 'perday')}>Per Day</button>
-                    <button type="button" className={`toggle-btn ${gcrMode === 'total' ? 'active' : ''}`} onClick={() => switchMode('gcr', 'total')}>Total So Far</button>
-                  </div>
-                </div>
-                <input
-                  type="number" name="gcr" value={fields.gcr} onChange={handleChange}
-                  placeholder={gcrMode === 'total' ? 'Total GCR so far ($)' : 'GCR per day ($)'}
-                  step="0.01" required
-                />
-                <span className="target-hint">
-                  {(() => {
-                    const gcrCfg = channel === 'messaging' ? activeConfig?.gcrMessaging : activeConfig?.gcrVoice
-                    return gcrMode === 'total' && W > 0
-                      ? `Target: $${(gcrCfg.target * W).toFixed(0)} by now`
-                      : `Target: $${gcrCfg?.target}/day`
-                  })()}
-                </span>
-                {computedGCR && <span className="computed-hint">= ${computedGCR}/day</span>}
-              </label>
+              {nonQualityDefs.map(def => {
+                const mode = fieldModes[def.key]
+                const isTotal = mode === 'total'
+                const computed = isTotal && fields[def.key] && W > 0
+                  ? (parseFloat(fields[def.key]) / W).toFixed(2) : null
+                return (
+                  <label key={def.key}>
+                    <div className="field-header spaced">
+                      <span>{isTotal ? `Total ${def.fullName} So Far` : def.fullName}</span>
+                      {def.entryMode === 'perday' && (
+                        <div className="inline-toggle">
+                          <button type="button" className={`toggle-btn ${!isTotal ? 'active' : ''}`}
+                            onClick={() => { setFieldModes(m => ({ ...m, [def.key]: 'perday' })); setFields(f => ({ ...f, [def.key]: '' })); clearResult() }}>
+                            Per Day
+                          </button>
+                          <button type="button" className={`toggle-btn ${isTotal ? 'active' : ''}`}
+                            onClick={() => { setFieldModes(m => ({ ...m, [def.key]: 'total' })); setFields(f => ({ ...f, [def.key]: '' })); clearResult() }}>
+                            Total So Far
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <input
+                      type="number"
+                      name={def.key}
+                      value={fields[def.key]}
+                      onChange={e => { setFields(f => ({ ...f, [def.key]: e.target.value })); clearResult() }}
+                      placeholder={isTotal ? `Total so far` : def.label}
+                      step="0.01"
+                      min={def.entryMode === 'percent' ? '0' : undefined}
+                      max={def.maxEntry != null ? String(def.maxEntry) : undefined}
+                      required
+                    />
+                    <span className="target-hint">{targetHint(def, mode)}</span>
+                    {computed && <span className="computed-hint">= {def.prefix || ''}{computed}{def.suffix}</span>}
+                  </label>
+                )
+              })}
             </div>
 
-            {/* Row 3: QA */}
-            <div className="qa-fields">
-              <label>
-                <div className="field-header"><span>QA Average</span></div>
-                <input
-                  type="number" name="qa" value={fields.qa} onChange={handleChange}
-                  placeholder="Current QA avg" step="0.01" min="0" max="100" required
-                />
-                <span className="target-hint">Target: {activeConfig?.qa.target}%</span>
-              </label>
-              <label className="field-narrow">
-                <div className="field-header"><span>Evals Received</span></div>
-                <input
-                  type="number" value={qaCount}
-                  onChange={e => { setQaCount(e.target.value); clearResult() }}
-                  placeholder="e.g. 3" min="0" step="1"
-                />
-                {parseInt(qaCount) > 0 && parseInt(qaCount) < 4 && (
-                  <span className="warn-hint">Min 4 required</span>
-                )}
-              </label>
-              <label className="field-narrow">
-                <div className="field-header"><span>Expected Remaining</span></div>
-                <input
-                  type="number" value={qaRemainingEvals}
-                  onChange={e => { setQaRemainingEvals(e.target.value); clearResult() }}
-                  placeholder="e.g. 1" min="0" step="1"
-                />
-                <span className="target-hint">For guidance</span>
-              </label>
-            </div>
+            {/* Quality metric (QA / AQI) + evals — hidden for qaNotInMis teams */}
+            {qualityDef && !teamDef.qaNotInMis && (
+              <div className="qa-fields">
+                <label>
+                  <div className="field-header"><span>{qualityDef.label} Average</span></div>
+                  <input
+                    type="number"
+                    value={fields[qualityDef.key]}
+                    onChange={e => { setFields(f => ({ ...f, [qualityDef.key]: e.target.value })); clearResult() }}
+                    placeholder={`Current ${qualityDef.label} avg`}
+                    step="0.01" min="0" max="100" required
+                  />
+                  <span className="target-hint">
+                    {resolvedConfig[qualityDef.configKey] && `Target: ${resolvedConfig[qualityDef.configKey].target}${qualityDef.suffix}`}
+                  </span>
+                </label>
+                <label className="field-narrow">
+                  <div className="field-header"><span>Evals Received</span></div>
+                  <input
+                    type="number" value={qaCount}
+                    onChange={e => { setQaCount(e.target.value); clearResult() }}
+                    placeholder="e.g. 3" min="0" step="1"
+                  />
+                  {parseInt(qaCount) > 0 && parseInt(qaCount) < 4 && (
+                    <span className="warn-hint">Min 4 required</span>
+                  )}
+                </label>
+                <label className="field-narrow">
+                  <div className="field-header"><span>Expected Remaining</span></div>
+                  <input
+                    type="number" value={qaRemainingEvals}
+                    onChange={e => { setQaRemainingEvals(e.target.value); clearResult() }}
+                    placeholder="e.g. 1" min="0" step="1"
+                  />
+                  <span className="target-hint">For guidance</span>
+                </label>
+              </div>
+            )}
 
             <button type="submit" className="btn-primary">Calculate My Score</button>
           </form>
@@ -476,11 +533,10 @@ export default function GuideView({ config, guideUser }) {
 
                 <div className="metric-breakdown">
                   <h3>Score Breakdown</h3>
-                  <MetricRow label="CPD" score={result.cpd} railMin={SCORE_RAILS.cpd.min} railMax={SCORE_RAILS.cpd.max} />
-                  <MetricRow label="GCR" score={result.gcr} railMin={SCORE_RAILS.gcr.min} railMax={SCORE_RAILS.gcr.max} />
-                  <MetricRow label="QA"  score={result.qa}  railMin={SCORE_RAILS.qa.min}  railMax={SCORE_RAILS.qa.max}  />
+                  {metricDefs.map(def => (
+                    <MetricRow key={def.key} label={def.label} score={result[def.key]} railMin={def.rail.min} railMax={def.rail.max} />
+                  ))}
                 </div>
-
               </div>
 
               {guidance?.noRemaining ? (
@@ -490,77 +546,87 @@ export default function GuideView({ config, guideUser }) {
               ) : guidance && (
                 <div className="guidance-card">
 
-                  {(result.cpd < 0 || result.gcr < 0 || result.qa < 0) && (
+                  {metricDefs.some(def => result[def.key] < 0) && (
                     <div className="guidance-section">
                       <h3 className="guidance-heading guidance-heading-warn">To Get On Track</h3>
                       <p className="guidance-intro">
-                        With <strong>{usedDays.R}</strong> day{usedDays.R !== 1 ? 's' : ''} remaining,
+                        With <strong>{snapshot.R}</strong> day{snapshot.R !== 1 ? 's' : ''} remaining,
                         here's what each metric needs to reach its target:
                       </p>
                       <div className="guidance-rows">
-                        <RateGuidanceRow
-                          label="CPD"
-                          current={usedActuals.cpd}
-                          needed={guidance.toTarget.cpd}
-                          daysRemaining={usedDays.R}
-                          ceiling={Infinity}
-                        />
-                        <RateGuidanceRow
-                          label="GCR"
-                          current={usedActuals.gcr}
-                          needed={guidance.toTarget.gcr}
-                          daysRemaining={usedDays.R}
-                          prefix="$"
-                          ceiling={Infinity}
-                        />
-                        <QaGuidanceRow
-                          currentAvg={usedActuals.qa}
-                          qaCount={usedQa.count}
-                          qaRemaining={usedQa.remaining}
-                          needed={guidance.toTarget.qaAvg}
-                          qaTarget={activeConfig?.qa.target}
-                        />
+                        {metricDefs.map(def => {
+                          if (def.isQuality && !teamDef.qaNotInMis) {
+                            return (
+                              <QaGuidanceRow
+                                key={def.key}
+                                label={def.label}
+                                currentAvg={snapshot.actuals[def.key]}
+                                qaCount={snapshot.qaCount}
+                                qaRemaining={snapshot.qaRemaining}
+                                needed={guidance.toTarget[def.key]}
+                                qaTarget={resolvedConfig[def.configKey]?.target}
+                              />
+                            )
+                          }
+                          return (
+                            <GuidanceRow
+                              key={def.key}
+                              label={def.label}
+                              current={snapshot.actuals[def.key]}
+                              needed={guidance.toTarget[def.key]}
+                              daysRemaining={snapshot.R}
+                              fmt={guidanceFmt(def)}
+                            />
+                          )
+                        })}
                       </div>
                     </div>
                   )}
 
-                  <div className="guidance-section">
-                    <h3 className="guidance-heading guidance-heading-good">
-                      {result.passing ? 'To Maximize Your Score' : 'To Reach Your Maximum'}
-                    </h3>
-                    <p className="guidance-intro">
-                      {result.passing
-                        ? `You're On Track. Here's what each metric needs for the remaining ${usedDays.R} day${usedDays.R !== 1 ? 's' : ''} to hit its ceiling:`
-                        : `If you can push past the target, here's what it takes to cap out each metric:`
-                      }
-                    </p>
-                    <div className="guidance-rows">
-                      <RateGuidanceRow
-                        label="CPD"
-                        current={usedActuals.cpd}
-                        needed={guidance.maximize.cpd}
-                        daysRemaining={usedDays.R}
-                        ceiling={Infinity}
-                        aspirational
-                      />
-                      <RateGuidanceRow
-                        label="GCR"
-                        current={usedActuals.gcr}
-                        needed={guidance.maximize.gcr}
-                        daysRemaining={usedDays.R}
-                        prefix="$"
-                        ceiling={Infinity}
-                        aspirational
-                      />
-                      <QaGuidanceRow
-                        currentAvg={usedActuals.qa}
-                        qaCount={usedQa.count}
-                        qaRemaining={usedQa.remaining}
-                        needed={guidance.maximize.qaAvg}
-                        qaTarget={activeConfig?.qa.target}
-                      />
+                  {hasMaximize && (
+                    <div className="guidance-section">
+                      <h3 className="guidance-heading guidance-heading-good">
+                        {result.passing ? 'To Maximize Your Score' : 'To Reach Your Maximum'}
+                      </h3>
+                      <p className="guidance-intro">
+                        {result.passing
+                          ? `You're On Track. Here's what each metric needs for the remaining ${snapshot.R} day${snapshot.R !== 1 ? 's' : ''} to hit its ceiling:`
+                          : `If you can push past the target, here's what it takes to cap out each metric:`
+                        }
+                      </p>
+                      <div className="guidance-rows">
+                        {metricDefs.map(def => {
+                          const maxVal = guidance.maximize[def.key]
+                          if (maxVal === null || maxVal === undefined) return null
+                          if (def.isQuality && !teamDef.qaNotInMis) {
+                            return (
+                              <QaGuidanceRow
+                                key={def.key}
+                                label={def.label}
+                                currentAvg={snapshot.actuals[def.key]}
+                                qaCount={snapshot.qaCount}
+                                qaRemaining={snapshot.qaRemaining}
+                                needed={maxVal}
+                                qaTarget={resolvedConfig[def.configKey]?.target}
+                              />
+                            )
+                          }
+                          return (
+                            <GuidanceRow
+                              key={def.key}
+                              label={def.label}
+                              current={snapshot.actuals[def.key]}
+                              needed={maxVal}
+                              daysRemaining={snapshot.R}
+                              fmt={guidanceFmt(def)}
+                              ceiling={def.maxEntry ?? Infinity}
+                              aspirational
+                            />
+                          )
+                        })}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                 </div>
               )}

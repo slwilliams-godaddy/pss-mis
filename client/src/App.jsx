@@ -1,31 +1,55 @@
 import { useState, useEffect } from 'react'
+import logo from './assets/logo.png'
 import GuideView from './components/GuideView'
 import SupervisorView from './components/SupervisorView'
-import PasswordGate from './components/PasswordGate'
-import { getConfig, saveConfig, getGuideNames, checkGuide, changeGuidePassword } from './utils/storage'
+import ManagerView from './components/ManagerView'
+import { getGuideNames, checkGuide, changeGuidePassword, checkUser, changeSupervisorPassword, getSupervisorUsernames, checkManager, getManagerUsernames, changeManagerPassword } from './utils/storage'
+import { TEAM_DEFS } from './utils/teamConfig'
 import './App.css'
 
-function GuideLoginModal({ onSuccess, onClose }) {
-  const [guideNames, setGuideNames] = useState([])
-  const [guideName, setGuideName] = useState('')
+function LoginPanel({ onLogin }) {
+  const [role, setRole] = useState('')
+  const [team, setTeam] = useState('')
+  const [name, setName] = useState('')
+  const [names, setNames] = useState([])
+  const [namesLoading, setNamesLoading] = useState(false)
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
+  const needsTeam = role === 'guide'
+  const teamReady = !needsTeam || !!team
+
   useEffect(() => {
-    getGuideNames().then(names => {
-      setGuideNames(names)
-      if (names.length === 1) setGuideName(names[0])
-    }).catch(() => {})
-  }, [])
+    setName('')
+    setNames([])
+    if (!role || !teamReady) return
+    setNamesLoading(true)
+    const fetch =
+      role === 'guide'       ? getGuideNames(team) :
+      role === 'supervisor'  ? getSupervisorUsernames().then(us => us.map(u => u.username)) :
+                               getManagerUsernames()
+    fetch
+      .then(ns => { setNames(ns); if (ns.length === 1) setName(ns[0]); setNamesLoading(false) })
+      .catch(() => setNamesLoading(false))
+  }, [role, team])
+
+  const handleRoleChange = (r) => { setRole(r); setTeam(''); setName(''); setNames([]); setError('') }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     setLoading(true)
     try {
-      const ok = await checkGuide(guideName, password)
-      if (ok) { onSuccess(guideName) } else { setError('Incorrect name or password.') }
+      const result =
+        role === 'guide'      ? await checkGuide(name, password) :
+        role === 'supervisor' ? await checkUser(name, password) :
+                                await checkManager(name, password)
+      if (result) {
+        onLogin(role, role === 'guide' ? { name, team: result.team } : result)
+      } else {
+        setError('Incorrect credentials.')
+      }
     } catch {
       setError('Could not verify credentials. Please try again.')
     } finally {
@@ -34,40 +58,74 @@ function GuideLoginModal({ onSuccess, onClose }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <div>
-            <h2>Guide Sign In</h2>
-            <p>Select your name and enter your password.</p>
-          </div>
-          <button className="btn-ghost modal-close" onClick={onClose}>✕</button>
-        </div>
-        <form onSubmit={handleSubmit} className="modal-form">
-          <select value={guideName} onChange={e => { setGuideName(e.target.value); setError('') }} required disabled={loading}>
-            <option value="" disabled>Select your name</option>
-            {guideNames.map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
-          <input
-            type="password"
-            value={password}
-            onChange={e => { setPassword(e.target.value); setError('') }}
-            placeholder="Password"
-            required
-            disabled={loading}
-            autoFocus={false}
-          />
-          {error && <p className="gate-error">{error}</p>}
-          <button type="submit" className="btn-primary" disabled={loading || !guideName}>
-            {loading ? 'Checking…' : 'Sign In'}
-          </button>
-        </form>
+    <div className="login-panel">
+      <div>
+        <h2 className="login-panel-title">Sign In</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.3rem' }}>Select your role to continue</p>
       </div>
+      <form onSubmit={handleSubmit} className="login-panel-form">
+        <div className="login-field-group">
+          <label className="login-field-label">Role</label>
+          <select value={role} onChange={e => handleRoleChange(e.target.value)} required disabled={loading}>
+            <option value="" disabled>Select role</option>
+            <option value="guide">Guide</option>
+            <option value="supervisor">Supervisor</option>
+            <option value="manager">Manager</option>
+          </select>
+        </div>
+
+        {role && needsTeam && (
+          <div className="login-field-group">
+            <label className="login-field-label">Team</label>
+            <select value={team} onChange={e => { setTeam(e.target.value); setName(''); setError('') }} required disabled={loading}>
+              <option value="" disabled>Select team</option>
+              {Object.entries(TEAM_DEFS).map(([id, def]) => (
+                <option key={id} value={id}>{def.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {role && teamReady && (
+          <div className="login-field-group">
+            <label className="login-field-label">{role === 'guide' ? 'Name' : 'Username'}</label>
+            <select value={name} onChange={e => { setName(e.target.value); setError('') }} required disabled={loading || namesLoading}>
+              <option value="" disabled>
+                {namesLoading ? 'Loading…' : `Select ${role === 'guide' ? 'your name' : 'user'}`}
+              </option>
+              {names.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+        )}
+
+        {name && (
+          <div className="login-field-group">
+            <label className="login-field-label">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={e => { setPassword(e.target.value); setError('') }}
+              placeholder="Enter password"
+              required
+              disabled={loading}
+              autoComplete="current-password"
+            />
+          </div>
+        )}
+
+        {error && <p className="gate-error">{error}</p>}
+
+        {name && (
+          <button type="submit" className="btn-primary login-submit-btn" disabled={loading || !password}>
+            {loading ? 'Signing in…' : 'Sign In'}
+          </button>
+        )}
+      </form>
     </div>
   )
 }
 
-function GuideSettingsModal({ guideUser, onClose }) {
+function GuideSettingsModal({ guideName, onClose }) {
   const [pwCurrent, setPwCurrent] = useState('')
   const [pwNew, setPwNew] = useState('')
   const [pwConfirm, setPwConfirm] = useState('')
@@ -77,7 +135,7 @@ function GuideSettingsModal({ guideUser, onClose }) {
     e.preventDefault()
     if (pwNew !== pwConfirm) { setPwMsg({ ok: false, text: 'New passwords do not match.' }); return }
     try {
-      await changeGuidePassword(guideUser, pwCurrent, pwNew)
+      await changeGuidePassword(guideName, pwCurrent, pwNew)
       setPwCurrent(''); setPwNew(''); setPwConfirm('')
       setPwMsg({ ok: true, text: 'Password updated.' })
       setTimeout(() => setPwMsg(null), 3000)
@@ -119,30 +177,241 @@ function GuideSettingsModal({ guideUser, onClose }) {
   )
 }
 
-const SESSION_KEY = 'pss-mis:supervisor'
-const GUIDE_SESSION_KEY = 'pss-mis:guide'
+function SupervisorSettingsModal({ currentUser, onClose }) {
+  const [pwCurrent, setPwCurrent] = useState('')
+  const [pwNew, setPwNew] = useState('')
+  const [pwConfirm, setPwConfirm] = useState('')
+  const [pwMsg, setPwMsg] = useState(null)
 
-export default function App() {
-  const [role, setRole] = useState(null)
-  const [showAbout, setShowAbout] = useState(false)
-  const [showGuideLogin, setShowGuideLogin] = useState(false)
-  const [showSupervisorLogin, setShowSupervisorLogin] = useState(false)
-  const [showGuideSettings, setShowGuideSettings] = useState(false)
-  const [supervisorUser, setSupervisorUser] = useState(() => sessionStorage.getItem(SESSION_KEY))
-  const [guideUser, setGuideUser] = useState(() => sessionStorage.getItem(GUIDE_SESSION_KEY))
-  const [config, setConfig] = useState(null)
-  const [configLoading, setConfigLoading] = useState(true)
+  const handleChangePassword = async (e) => {
+    e.preventDefault()
+    if (pwNew !== pwConfirm) { setPwMsg({ ok: false, text: 'New passwords do not match.' }); return }
+    try {
+      await changeSupervisorPassword(currentUser, pwCurrent, pwNew)
+      setPwCurrent(''); setPwNew(''); setPwConfirm('')
+      setPwMsg({ ok: true, text: 'Password updated.' })
+      setTimeout(() => setPwMsg(null), 3000)
+    } catch (err) {
+      setPwMsg({ ok: false, text: err.message })
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <h2>Settings</h2>
+            <p>Manage your account</p>
+          </div>
+          <button className="btn-ghost modal-close" onClick={onClose}>✕</button>
+        </div>
+        <h4 className="settings-section-label">Change My Password</h4>
+        <form onSubmit={handleChangePassword} className="password-form">
+          <label className="password-field">
+            <span>Current password</span>
+            <input type="password" value={pwCurrent} onChange={e => setPwCurrent(e.target.value)} required autoComplete="current-password" />
+          </label>
+          <label className="password-field">
+            <span>New password</span>
+            <input type="password" value={pwNew} onChange={e => setPwNew(e.target.value)} required autoComplete="new-password" />
+          </label>
+          <label className="password-field">
+            <span>Confirm new password</span>
+            <input type="password" value={pwConfirm} onChange={e => setPwConfirm(e.target.value)} required autoComplete="new-password" />
+          </label>
+          <div className="password-actions">
+            <button type="submit" className="btn-primary">Update Password</button>
+            {pwMsg && <span className={pwMsg.ok ? 'close-month-msg' : 'close-month-msg error-msg'}>{pwMsg.text}</span>}
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function ManagerLoginModal({ onSuccess, onClose }) {
+  const [usernames, setUsernames] = useState([])
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    getConfig()
-      .then(cfg => { setConfig(cfg); setConfigLoading(false) })
-      .catch(() => setConfigLoading(false))
+    getManagerUsernames().then(names => {
+      setUsernames(names)
+      if (names.length === 1) setUsername(names[0])
+    }).catch(() => {})
   }, [])
 
-  const handleConfigSave = async (cfg) => {
-    await saveConfig(cfg)
-    setConfig(cfg)
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    try {
+      const result = await checkManager(username, password)
+      if (result) { onSuccess(result) } else { setError('Incorrect username or password.') }
+    } catch {
+      setError('Could not verify credentials. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <h2>Manager Sign In</h2>
+            <p>Select your username and enter your password.</p>
+          </div>
+          <button className="btn-ghost modal-close" onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit} className="modal-form">
+          <select value={username} onChange={e => { setUsername(e.target.value); setError('') }} required disabled={loading}>
+            <option value="" disabled>Select user</option>
+            {usernames.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+          <input
+            type="password"
+            value={password}
+            onChange={e => { setPassword(e.target.value); setError('') }}
+            placeholder="Password"
+            required
+            disabled={loading}
+          />
+          {error && <p className="gate-error">{error}</p>}
+          <button type="submit" className="btn-primary" disabled={loading || !username}>
+            {loading ? 'Checking…' : 'Sign In'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function ManagerSettingsModal({ currentUser, onClose }) {
+  const [pwCurrent, setPwCurrent] = useState('')
+  const [pwNew, setPwNew] = useState('')
+  const [pwConfirm, setPwConfirm] = useState('')
+  const [pwMsg, setPwMsg] = useState(null)
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault()
+    if (pwNew !== pwConfirm) { setPwMsg({ ok: false, text: 'New passwords do not match.' }); return }
+    try {
+      await changeManagerPassword(currentUser, pwCurrent, pwNew)
+      setPwCurrent(''); setPwNew(''); setPwConfirm('')
+      setPwMsg({ ok: true, text: 'Password updated.' })
+      setTimeout(() => setPwMsg(null), 3000)
+    } catch (err) {
+      setPwMsg({ ok: false, text: err.message })
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <h2>Settings</h2>
+            <p>Manage your account</p>
+          </div>
+          <button className="btn-ghost modal-close" onClick={onClose}>✕</button>
+        </div>
+        <h4 className="settings-section-label">Change My Password</h4>
+        <form onSubmit={handleChangePassword} className="password-form">
+          <label className="password-field">
+            <span>Current password</span>
+            <input type="password" value={pwCurrent} onChange={e => setPwCurrent(e.target.value)} required autoComplete="current-password" />
+          </label>
+          <label className="password-field">
+            <span>New password</span>
+            <input type="password" value={pwNew} onChange={e => setPwNew(e.target.value)} required autoComplete="new-password" />
+          </label>
+          <label className="password-field">
+            <span>Confirm new password</span>
+            <input type="password" value={pwConfirm} onChange={e => setPwConfirm(e.target.value)} required autoComplete="new-password" />
+          </label>
+          <div className="password-actions">
+            <button type="submit" className="btn-primary">Update Password</button>
+            {pwMsg && <span className={pwMsg.ok ? 'close-month-msg' : 'close-month-msg error-msg'}>{pwMsg.text}</span>}
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+const SESSION_KEY = 'pss-mis:supervisor'
+const GUIDE_SESSION_KEY = 'pss-mis:guide'
+const MANAGER_SESSION_KEY = 'pss-mis:manager'
+
+function parseSession(key) {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(key))
+    return v && typeof v === 'object' ? v : null
+  } catch { return null }
+}
+
+function SunIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="5"/>
+      <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+      <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+    </svg>
+  )
+}
+
+function MoonIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+    </svg>
+  )
+}
+
+export default function App() {
+  const [supervisorUser, setSupervisorUser] = useState(() => parseSession(SESSION_KEY))
+  const [guideUser, setGuideUser] = useState(() => parseSession(GUIDE_SESSION_KEY))
+  const [managerUser, setManagerUser] = useState(() => parseSession(MANAGER_SESSION_KEY))
+  const [theme, setTheme] = useState(() => {
+    const sv = parseSession(SESSION_KEY)
+    const gv = parseSession(GUIDE_SESSION_KEY)
+    const mv = parseSession(MANAGER_SESSION_KEY)
+    const username = sv?.username || gv?.name || mv?.username
+    if (username) {
+      const saved = localStorage.getItem(`pss-mis:theme:${username}`)
+      if (saved) return saved
+    }
+    return localStorage.getItem('pss-mis:theme') || 'dark'
+  })
+  const [role, setRole] = useState(() => {
+    if (parseSession(GUIDE_SESSION_KEY)) return 'guide'
+    if (parseSession(SESSION_KEY)) return 'supervisor'
+    if (parseSession(MANAGER_SESSION_KEY)) return 'manager'
+    return null
+  })
+  const [showAbout, setShowAbout] = useState(false)
+  const [showGuideSettings, setShowGuideSettings] = useState(false)
+  const [showSupervisorSettings, setShowSupervisorSettings] = useState(false)
+  const [showManagerSettings, setShowManagerSettings] = useState(false)
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('pss-mis:theme', theme)
+    const username = role === 'guide' ? guideUser?.name
+      : role === 'supervisor' ? supervisorUser?.username
+      : role === 'manager' ? managerUser?.username
+      : null
+    if (username) localStorage.setItem(`pss-mis:theme:${username}`, theme)
+  }, [theme, role, guideUser, supervisorUser, managerUser])
+
+  const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark')
 
   const handleLogOut = () => {
     sessionStorage.removeItem(SESSION_KEY)
@@ -150,9 +419,10 @@ export default function App() {
     setRole(null)
   }
 
-  const handleGuideLogin = (name) => {
-    sessionStorage.setItem(GUIDE_SESSION_KEY, name)
-    setGuideUser(name)
+  const handleManagerLogout = () => {
+    sessionStorage.removeItem(MANAGER_SESSION_KEY)
+    setManagerUser(null)
+    setRole(null)
   }
 
   const handleGuideLogout = () => {
@@ -162,48 +432,41 @@ export default function App() {
   }
 
   const handleSwitchRole = () => {
+    sessionStorage.removeItem(SESSION_KEY)
+    sessionStorage.removeItem(GUIDE_SESSION_KEY)
+    sessionStorage.removeItem(MANAGER_SESSION_KEY)
+    setSupervisorUser(null)
+    setGuideUser(null)
+    setManagerUser(null)
     setRole(null)
   }
 
-  if (configLoading) {
-    return (
-      <div className="role-select-screen">
-        <h1>PSS Merchant Impact Score</h1>
-        <p className="subtext">Loading…</p>
-      </div>
-    )
+  const handleLogin = (r, userObj) => {
+    if (r === 'guide') {
+      sessionStorage.setItem(GUIDE_SESSION_KEY, JSON.stringify(userObj))
+      setGuideUser(userObj)
+    } else if (r === 'supervisor') {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(userObj))
+      setSupervisorUser(userObj)
+    } else if (r === 'manager') {
+      sessionStorage.setItem(MANAGER_SESSION_KEY, JSON.stringify(userObj))
+      setManagerUser(userObj)
+    }
+    const username = r === 'guide' ? userObj.name : userObj.username
+    const saved = localStorage.getItem(`pss-mis:theme:${username}`)
+    if (saved) setTheme(saved)
+    setRole(r)
   }
 
   if (!role) {
     return (
       <div className="role-select-screen">
-        <h1>PSS Merchant Impact Score</h1>
-        <p>Select your role to continue</p>
-        <div className="role-buttons">
-          <button className="role-btn" onClick={() => guideUser ? setRole('guide') : setShowGuideLogin(true)}>
-            <span className="role-icon">👤</span>
-            <span className="role-title">Guide</span>
-            <span className="role-desc">View my MIS history and pacing calculator</span>
-          </button>
-          <button className="role-btn" onClick={() => supervisorUser ? setRole('supervisor') : setShowSupervisorLogin(true)}>
-            <span className="role-icon">📊</span>
-            <span className="role-title">Supervisor</span>
-            <span className="role-desc">Input scores and manage team</span>
-          </button>
-        </div>
-
-        {showGuideLogin && (
-          <GuideLoginModal
-            onSuccess={(name) => { handleGuideLogin(name); setRole('guide'); setShowGuideLogin(false) }}
-            onClose={() => setShowGuideLogin(false)}
-          />
-        )}
-        {showSupervisorLogin && (
-          <PasswordGate
-            onSuccess={(username) => { sessionStorage.setItem(SESSION_KEY, username); setSupervisorUser(username); setRole('supervisor'); setShowSupervisorLogin(false) }}
-            onClose={() => setShowSupervisorLogin(false)}
-          />
-        )}
+        <button className="theme-toggle-float" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
+          {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+        </button>
+        <img src={logo} alt="Merchant Success" className="home-logo" />
+        <h1 className="home-title">CAS Performance Management</h1>
+        <LoginPanel onLogin={handleLogin} />
 
         <section className="mis-about">
           <button className="mis-about-toggle" onClick={() => setShowAbout(v => !v)}>
@@ -217,16 +480,17 @@ export default function App() {
               <div className="mis-about-section">
                 <h3>Purpose and Scope</h3>
                 <p>
-                  The Merchant Impact Score (MIS) is a monthly composite performance metric used to evaluate the
-                  commercial and service impact of each Technical Account Manager (TAM I and TAM II) within the
-                  Commerce Advanced Support – PowerSeller Success Department. MIS is comprised of three metrics:
-                  Contributions Per Day (CPD), Gross Cash Revenue Per Day (GCR), and Quality Assurance (QA).
+                  The CAS Performance Management (MIS) is a monthly composite performance metric used to evaluate the
+                  commercial and service impact of Technical Account Managers (TAMs) across Commerce Advanced
+                  Support (CAS). MIS applies to three teams within CAS:{' '}
+                  <strong>Powerseller Success (PSS)</strong>, <strong>Activations</strong>, and{' '}
+                  <strong>Escalations</strong>. Each team uses three metrics specific to their role, scored against
+                  monthly targets set by leadership.
                 </p>
                 <p>
-                  TAM I and TAM II are required to maintain a Total MIS of 0.0 or higher each calendar month.
-                  Failure to meet this minimum expectation will result in the application of the Performance
-                  Improvement Process. MIS scores are intended to support performance coaching and team management
-                  and do not, standing alone, constitute a basis for any formal employment action outside of the
+                  All team members are required to maintain a Total MIS <strong>greater than 0</strong> each
+                  calendar month. MIS scores are intended to support performance coaching and team management and
+                  do not, standing alone, constitute a basis for any formal employment action outside of the
                   processes described herein.
                 </p>
               </div>
@@ -240,16 +504,22 @@ export default function App() {
                   Care &amp; Services. During the New Hire Training Period and prior to that first accountability
                   date, TAMs will not be held to minimum metric expectations.
                 </p>
+                <p>
+                  TAMs who transfer between CAS teams (e.g., PSS to Escalations) are subject to a reset of this
+                  accountability timeline. The clock restarts on the first day of their second full calendar month
+                  on the new team, as if they were newly assigned.
+                </p>
                 <p className="mis-example-note">
                   Example: If a TAM is assigned to their team on October 15th, MIS accountability begins December 1st.
                 </p>
               </div>
 
               <div className="mis-about-section">
-                <h3>Performance Dimensions</h3>
+                <h3>Powerseller Success (PSS)</h3>
                 <p>
-                  MIS is calculated from three performance metrics. Monthly targets for each metric are established
-                  by leadership and communicated at least three days before the start of the applicable month.
+                  PSS TAMs are evaluated on volume of merchant interactions, revenue impact, and interaction quality.
+                  GCR targets are split by channel — Voice TAMs and Messaging TAMs have separate targets reflecting
+                  the different revenue dynamics of each channel.
                 </p>
                 <div className="mis-metric-list">
 
@@ -260,18 +530,15 @@ export default function App() {
                       month. Responsible days are prorated to the minute for approved time off.
                     </p>
                     <p>CPD = Total Contributions ÷ Responsible Days</p>
-                    <p>The following interaction types count toward CPD:</p>
+                    <p>Qualifying interaction types:</p>
                     <ul className="mis-calc-rules">
-                      <li>Inbound phone calls</li>
-                      <li>Outbound phone calls</li>
+                      <li>Inbound and outbound phone calls</li>
                       <li>Resolved cases</li>
-                      <li>Inbound front of site chat messages</li>
-                      <li>Inbound SMS messages</li>
-                      <li>L2 chats</li>
+                      <li>Inbound front-of-site chat and SMS messages</li>
+                      <li>L2 chats (internal support chats with other departments or L1 guides — not customer-facing)</li>
                     </ul>
                     <p className="mis-example-note">
-                      Example: A TAM has 46 inbound/outbound calls, 316 chats, and 123 resolved cases (485 total
-                      contributions) over 20 responsible days.<br />
+                      Example: 46 calls, 316 chats, 123 resolved cases = 485 contributions over 20 days.<br />
                       CPD = 485 ÷ 20 = <strong>24.25</strong>
                     </p>
                   </div>
@@ -280,15 +547,19 @@ export default function App() {
                     <span className="mis-metric-name">Gross Cash Revenue Per Day (GCR)</span>
                     <p>
                       The average daily cash revenue generated through a TAM's merchant activity over their
-                      responsible days for the calendar month. GCR includes directly processed new sales as well
-                      as commerce revenue generated through campaigns that is not recognized through new sales
-                      (for example, GD Capital fees paid). Responsible days are prorated to the minute for
+                      responsible days. GCR includes new sales processed directly by the TAM through the CRM or
+                      GoDaddy ecommerce system, as well as commerce revenue from campaigns not recognized through
+                      new sales (e.g., GD Capital fees paid). Responsible days are prorated to the minute for
                       approved time off.
                     </p>
+                    <p>GCR = Total Cash Revenue ÷ Responsible Days</p>
+                    <p>
+                      Voice and Messaging TAMs are evaluated against separate channel-specific targets. Each TAM's
+                      score is calculated using the target corresponding to their assigned channel.
+                    </p>
                     <p className="mis-example-note">
-                      Example: A TAM has $8,500 in new sales and $1,250 in GD Capital fees paid over
-                      18.31 responsible days.<br />
-                      GCR = ($8,500 + $1,250) ÷ 18.31 = <strong>$532.49/day</strong>
+                      Example: $8,500 in new sales + $1,250 in GD Capital fees over 18.31 responsible days.<br />
+                      GCR = $9,750 ÷ 18.31 = <strong>$532.49/day</strong>
                     </p>
                   </div>
 
@@ -300,21 +571,144 @@ export default function App() {
                     </p>
                     <p>QA = Sum of Review Scores ÷ Number of Reviews</p>
                     <p className="mis-example-note">
-                      Example: Four reviews return scores of 80, 85, 100, and 50.<br />
-                      QA = (80 + 85 + 100 + 50) ÷ 4 = <strong>78.75</strong>
+                      Example: Reviews of 80, 85, 100, and 50.<br />
+                      QA = 315 ÷ 4 = <strong>78.75%</strong>
                     </p>
                   </div>
 
                 </div>
+
+                <p>PSS metric weights and point ranges:</p>
+                <table className="mis-rails-table">
+                  <thead>
+                    <tr><th>Metric</th><th>Weight</th><th>Min Points</th><th>Max Points</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>CPD</td><td>1.5×</td><td>−35</td><td>+35</td></tr>
+                    <tr><td>GCR</td><td>1.0×</td><td>−20</td><td>+20</td></tr>
+                    <tr><td>QA</td><td>1.0×</td><td>−20</td><td>+20</td></tr>
+                    <tr className="mis-rails-total"><td>Total MIS</td><td></td><td>−75</td><td>+75</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mis-about-section">
+                <h3>Activations</h3>
+                <p>
+                  Activations TAMs are evaluated on their ability to win revenue opportunities, sustain activation
+                  volume, and maintain quality standards. All three metrics carry equal weight. The AQI metric is
+                  synced from activation reviews — a minimum of four reviews is required for a complete score.
+                </p>
+                <div className="mis-metric-list">
+
+                  <div className="mis-metric-item">
+                    <span className="mis-metric-name">aGPV Win Rate</span>
+                    <p>
+                      Determined by the percent of qualified, signed, and handed-off GPV (by dollar amount) that ends
+                      up being marked won.
+                    </p>
+                    <p>aGPV Win Rate = Won aGPV ($) ÷ Total Qualified aGPV ($) × 100</p>
+                  </div>
+
+                  <div className="mis-metric-item">
+                    <span className="mis-metric-name">Work Orders Per Day</span>
+                    <p>
+                      The average number of work orders completed per responsible day during the calendar month.
+                      Responsible days are prorated to the minute for approved time off.
+                    </p>
+                    <p>Work Orders/Day = Total Work Orders ÷ Responsible Days</p>
+                  </div>
+
+                  <div className="mis-metric-item">
+                    <span className="mis-metric-name">Activation Quality Index (AQI)</span>
+                    <p>
+                      The average quality score across a minimum of four activation reviews conducted by leadership
+                      during the calendar month. AQI is synced automatically from the AQI Reviews tab.
+                    </p>
+                    <p>AQI = Sum of Review Scores ÷ Number of Reviews</p>
+                  </div>
+
+                </div>
+
+                <p>Activations metric weights and point ranges:</p>
+                <table className="mis-rails-table">
+                  <thead>
+                    <tr><th>Metric</th><th>Weight</th><th>Min Points</th><th>Max Points</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>aGPV Win Rate</td><td>1.0×</td><td>−25</td><td>+25</td></tr>
+                    <tr><td>Work Orders/Day</td><td>1.0×</td><td>−25</td><td>+25</td></tr>
+                    <tr><td>AQI</td><td>1.0×</td><td>−25</td><td>+25</td></tr>
+                    <tr className="mis-rails-total"><td>Total MIS</td><td></td><td>−75</td><td>+75</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mis-about-section">
+                <h3>Escalations</h3>
+                <p>
+                  Escalations TAMs are evaluated on case closure volume, resolution effectiveness, and non-queue
+                  work output. Guide level affects targets for case closures and non-queue work — Level 1
+                  and Level 2 guides are held to different targets reflecting their workload profile.
+                  QA reviews are tracked for coaching purposes but are <strong>not</strong> included in the MIS
+                  score calculation for Escalations.
+                </p>
+                <div className="mis-metric-list">
+
+                  <div className="mis-metric-item">
+                    <span className="mis-metric-name">Case Closures Per Day</span>
+                    <p>
+                      The average number of escalation cases closed per responsible day during the calendar month.
+                      Responsible days are prorated to the minute for approved time off.
+                    </p>
+                    <p>Case Closures/Day = Total Cases Closed ÷ Responsible Days</p>
+                    <p className="mis-example-note">Level 1 target: 8/day &nbsp;·&nbsp; Level 2 target: 5/day</p>
+                  </div>
+
+                  <div className="mis-metric-item">
+                    <span className="mis-metric-name">Resolution Rate</span>
+                    <p>
+                      Determined by the proportion of escalated cases that have been successfully marked as resolved,
+                      based on the total number of escalated cases. Resolution is determined by the case status
+                      recorded in the ticketing system.
+                    </p>
+                    <p>Resolution Rate = Cases Resolved ÷ Total Escalated Cases × 100</p>
+                  </div>
+
+                  <div className="mis-metric-item">
+                    <span className="mis-metric-name">Non-Queue Contributions Per Day</span>
+                    <p>
+                      Manually tracked by each team member and recorded whenever they engage in activities beyond
+                      standard ticket queues. These efforts contribute to the ongoing improvement of the department
+                      and the overall product. Common examples include submitting bug reports, conducting product
+                      testing, and enhancing the team knowledge base.
+                    </p>
+                    <p>Non-Queue Work/Day = Total Non-Queue Contributions ÷ Responsible Days</p>
+                    <p className="mis-example-note">Level 1 target: 12/day &nbsp;·&nbsp; Level 2 target: 5/day</p>
+                  </div>
+
+                </div>
+
+                <p>Escalations metric weights and point ranges:</p>
+                <table className="mis-rails-table">
+                  <thead>
+                    <tr><th>Metric</th><th>Weight</th><th>Min Points</th><th>Max Points</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>Case Closures/Day</td><td>1.0×</td><td>−25</td><td>+25</td></tr>
+                    <tr><td>Resolution Rate</td><td>1.0×</td><td>−25</td><td>+25</td></tr>
+                    <tr><td>Non-Queue Contributions/Day</td><td>1.0×</td><td>−25</td><td>+25</td></tr>
+                    <tr className="mis-rails-total"><td>Total MIS</td><td></td><td>−75</td><td>+75</td></tr>
+                  </tbody>
+                </table>
               </div>
 
               <div className="mis-about-section">
                 <h3>Score Calculation</h3>
                 <p>
-                  Each metric is scored by measuring percentage deviation from its monthly target, then multiplying
-                  by a metric-specific weight. Performing exactly at target earns 0 points. Performance above target
-                  earns positive points; performance below target loses points. Each metric's score is capped at a
-                  fixed maximum and floored at a fixed minimum regardless of how far above or below target the result falls.
+                  The formula is the same across all three teams. Each metric is scored by measuring percentage
+                  deviation from its monthly target, multiplied by a metric-specific weight, then clamped to the
+                  metric's point rail. Performing exactly at target earns 0 points.
                 </p>
                 <div className="mis-formula-block">
                   <div className="mis-formula-row">
@@ -323,35 +717,21 @@ export default function App() {
                   </div>
                   <div className="mis-formula-row mis-formula-total">
                     <span className="mis-formula-label">Total MIS</span>
-                    <span className="mis-formula-expr">CPD points + GCR points + QA points</span>
+                    <span className="mis-formula-expr">sum of all metric points</span>
                   </div>
                 </div>
                 <p>
-                  Each metric's point value is rounded to the nearest hundredth before being added to the Total MIS.
-                  The Total MIS is then independently rounded to the nearest hundredth as well.
+                  Each metric's point value is rounded to the nearest hundredth before summing.
+                  The Total MIS is then independently rounded to the nearest hundredth.
                 </p>
-                <p>Each metric has a weight and a fixed point range:</p>
-                <table className="mis-rails-table">
-                  <thead>
-                    <tr><th>Metric</th><th>Weight</th><th>Min Points</th><th>Max Points</th></tr>
-                  </thead>
-                  <tbody>
-                    <tr><td>Contributions Per Day (CPD)</td><td>1.5×</td><td>−35</td><td>+35</td></tr>
-                    <tr><td>Gross Cash Revenue Per Day (GCR)</td><td>1.0×</td><td>−20</td><td>+20</td></tr>
-                    <tr><td>Quality Assurance (QA)</td><td>1.0×</td><td>−20</td><td>+20</td></tr>
-                    <tr className="mis-rails-total"><td>Total MIS</td><td></td><td>−75</td><td>+75</td></tr>
-                  </tbody>
-                </table>
-
-                <p className="mis-example-note">
-                  The CPD weight of 1.5× means every 1% above or below the CPD target is worth 1.5 points,
-                  versus 1 point per 1% for GCR and QA. CPD can also contribute up to ±35 points compared
-                  to ±20 for the other metrics, giving it both a faster earn rate and a wider range.
+                <p>
+                  Monthly scores are finalized and published to TAMs within 5 business days of the close of each
+                  calendar month.
                 </p>
 
-                <p className="mis-subsection-label">Example — On Track</p>
+                <p className="mis-subsection-label">PSS Example — On Track</p>
                 <p className="mis-example-note">
-                  Monthly targets: CPD 17 &nbsp;·&nbsp; GCR $70 &nbsp;·&nbsp; QA 85%
+                  Monthly targets: CPD 17 &nbsp;·&nbsp; GCR $70/day &nbsp;·&nbsp; QA 85%
                 </p>
                 <table className="mis-example-table">
                   <thead>
@@ -380,45 +760,42 @@ export default function App() {
                   </tbody>
                 </table>
 
-                <p className="mis-subsection-label">Example — Off Track</p>
-                <p className="mis-example-note">Same monthly targets as above.</p>
+                <p className="mis-subsection-label">Escalations Example — TAM 3, Off Track</p>
+                <p className="mis-example-note">
+                  Monthly targets: Case Closures 5/day &nbsp;·&nbsp; Resolution Rate 60% &nbsp;·&nbsp; Non-Queue Contributions 5/day
+                </p>
                 <table className="mis-example-table">
                   <thead>
                     <tr><th>Metric</th><th>Target</th><th>Result</th><th>Calculation</th><th>Points</th></tr>
                   </thead>
                   <tbody>
                     <tr>
-                      <td>CPD</td><td>17</td><td>15</td>
-                      <td className="mis-calc-cell">((15 ÷ 17) − 1) × 100 × 1.5</td>
-                      <td className="mis-pts-neg">−17.65</td>
+                      <td>Case Closures/Day</td><td>5</td><td>4.2</td>
+                      <td className="mis-calc-cell">((4.2 ÷ 5) − 1) × 100 × 1.0</td>
+                      <td className="mis-pts-neg">−16.00</td>
                     </tr>
                     <tr>
-                      <td>GCR</td><td>$70</td><td>$55</td>
-                      <td className="mis-calc-cell">((55 ÷ 70) − 1) × 100 × 1.0</td>
-                      <td className="mis-pts-neg">−21.43</td>
+                      <td>Resolution Rate</td><td>60%</td><td>57%</td>
+                      <td className="mis-calc-cell">((57 ÷ 60) − 1) × 100 × 1.0</td>
+                      <td className="mis-pts-neg">−5.00</td>
                     </tr>
                     <tr>
-                      <td>QA</td><td>85%</td><td>78%</td>
-                      <td className="mis-calc-cell">((78 ÷ 85) − 1) × 100 × 1.0</td>
-                      <td className="mis-pts-neg">−8.24</td>
+                      <td>Non-Queue Contributions/Day</td><td>5</td><td>4.5</td>
+                      <td className="mis-calc-cell">((4.5 ÷ 5) − 1) × 100 × 1.0</td>
+                      <td className="mis-pts-neg">−10.00</td>
                     </tr>
                     <tr className="mis-example-total">
                       <td colSpan={4}>Total MIS</td>
-                      <td><span className="mis-status-off">−47.32 — Off Track ✗</span></td>
+                      <td><span className="mis-status-off">−31.00 — Off Track ✗</span></td>
                     </tr>
                   </tbody>
                 </table>
-
-                <p className="mis-example-note">
-                  Scores are clamped to the rail for each metric regardless of how far above or below
-                  target actual performance falls.
-                </p>
               </div>
 
               <div className="mis-about-section">
                 <h3>Minimum Performance Expectations</h3>
                 <p>
-                  TAM I and TAM II must achieve a Total MIS <strong>greater than 0</strong> each calendar month.
+                  All team members must achieve a Total MIS <strong>greater than 0</strong> each calendar month.
                   A TAM whose Total MIS is above 0 is designated{' '}
                   <strong className="mis-status-on">On Track</strong> and has satisfied the monthly MIS minimum
                   expectation.
@@ -444,8 +821,9 @@ export default function App() {
                 <h3>Confidentiality and Appropriate Use</h3>
                 <p>
                   Individual MIS scores and the underlying performance data are confidential. Access is restricted
-                  to the individual TAM to whom the score applies and authorized supervisors within the Powerseller
-                  Success team. Permitted uses include:
+                  to the individual TAM to whom the score applies, their direct supervisors, and authorized
+                  leadership and HR partners within the organization.
+                  Permitted uses include:
                 </p>
                 <ul className="mis-calc-rules">
                   <li>Monthly individual performance coaching conversations</li>
@@ -470,30 +848,50 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>PSS Merchant Impact Score</h1>
-        <div className="header-actions">
-          {(role === 'guide' ? guideUser : supervisorUser) && (
-            <span className="header-username">{role === 'guide' ? guideUser : supervisorUser}</span>
-          )}
-          {role === 'guide' && (
-            <button className="btn-gear" title="Settings" onClick={() => setShowGuideSettings(true)}>⚙</button>
-          )}
-          <button className="btn-ghost" onClick={handleSwitchRole}>Switch Role</button>
-          {role === 'supervisor' && (
-            <button className="btn-ghost" onClick={handleLogOut}>Log Out</button>
-          )}
-          {role === 'guide' && (
-            <button className="btn-ghost" onClick={handleGuideLogout}>Log Out</button>
-          )}
-        </div>
+        <h1>CAS Performance Management</h1>
+        {(() => {
+          const displayName = role === 'guide' ? guideUser?.name : role === 'supervisor' ? supervisorUser?.username : managerUser?.username
+          const initial = displayName?.[0]?.toUpperCase() ?? '?'
+          const onSettings = role === 'guide' ? () => setShowGuideSettings(true) : role === 'supervisor' ? () => setShowSupervisorSettings(true) : () => setShowManagerSettings(true)
+          const onLogout = role === 'guide' ? handleGuideLogout : role === 'manager' ? handleManagerLogout : handleLogOut
+          return (
+            <div className="header-actions">
+              <div className="header-user">
+                <span className="header-avatar">{initial}</span>
+                <span className="header-username">{displayName}</span>
+              </div>
+              <button className="header-theme-btn" onClick={toggleTheme} title={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
+                {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+              </button>
+              <button className="header-settings-btn" title="Settings" onClick={onSettings}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
+                  <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
+                  <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
+                  <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
+                </svg>
+              </button>
+              <div className="header-divider" />
+              <button className="header-logout-btn" onClick={onLogout}>Log out</button>
+            </div>
+          )
+        })()}
       </header>
-      {showGuideSettings && (
-        <GuideSettingsModal guideUser={guideUser} onClose={() => setShowGuideSettings(false)} />
+      {showGuideSettings && guideUser && (
+        <GuideSettingsModal guideName={guideUser.name} onClose={() => setShowGuideSettings(false)} />
+      )}
+      {showSupervisorSettings && supervisorUser && (
+        <SupervisorSettingsModal currentUser={supervisorUser.username} onClose={() => setShowSupervisorSettings(false)} />
+      )}
+      {showManagerSettings && managerUser && (
+        <ManagerSettingsModal currentUser={managerUser.username} onClose={() => setShowManagerSettings(false)} />
       )}
       <main>
         {role === 'guide'
-          ? <GuideView config={config} guideUser={guideUser} />
-          : <SupervisorView config={config} onConfigSave={handleConfigSave} currentUser={supervisorUser} />
+          ? <GuideView team={guideUser?.team} guideUser={guideUser?.name} />
+          : role === 'manager'
+            ? <ManagerView managerUser={managerUser} onLogout={handleManagerLogout} />
+            : <SupervisorView team={supervisorUser?.team} currentUser={supervisorUser?.username} />
         }
       </main>
     </div>
