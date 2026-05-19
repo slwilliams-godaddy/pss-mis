@@ -615,10 +615,7 @@ input:focus { outline: none; border-color: var(--blue); }
 .days-inline input { width: 120px; }
 
 /* BULK TABLE CELL LAYOUT */
-.cell-col { display: flex; flex-direction: column; gap: 0.2rem; min-width: 80px; }
-.perday-cell { display: flex; align-items: flex-start; gap: 0.35rem; min-width: 100px; }
-.perday-toggles { display: flex; flex-direction: column; gap: 2px; padding-top: 0.2rem; flex-shrink: 0; }
-.perday-input-wrap { display: flex; flex-direction: column; gap: 0.15rem; flex: 1; min-width: 0; }
+.perday-cell { display: flex; align-items: center; gap: 3px; }
 .mini-toggle {
   background: transparent;
   border: 1px solid var(--border);

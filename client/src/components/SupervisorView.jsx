@@ -771,32 +771,21 @@ export default function SupervisorView({ team, currentUser }) {
                                 return (
                                   <td key={def.key}>
                                     <div className="perday-cell">
-                                      <div className="perday-toggles">
-                                        <button type="button" className={`mini-toggle ${g[modeKey] === 'perday' ? 'active' : ''}`} onClick={() => toggleMetricMode(i, def.key)}>avg</button>
-                                        <button type="button" className={`mini-toggle ${g[modeKey] === 'total' ? 'active' : ''}`} onClick={() => toggleMetricMode(i, def.key)}>total</button>
-                                      </div>
-                                      <div className="perday-input-wrap">
-                                        <input type="number" value={g[def.key]} onChange={e => handleGuideChange(i, def.key, e.target.value)} placeholder={g[modeKey] === 'total' ? `Total` : 'Per day'} step="0.01" />
-                                        {computed !== null && <span className="computed-hint">{def.prefix}{computed.toFixed(2)}{def.suffix}</span>}
-                                      </div>
+                                      <button type="button" className={`mini-toggle ${g[modeKey] === 'perday' ? 'active' : ''}`} onClick={() => toggleMetricMode(i, def.key)}>avg</button>
+                                      <button type="button" className={`mini-toggle ${g[modeKey] === 'total' ? 'active' : ''}`} onClick={() => toggleMetricMode(i, def.key)}>total</button>
+                                      <input type="number" value={g[def.key]} onChange={e => handleGuideChange(i, def.key, e.target.value)} placeholder={g[modeKey] === 'total' ? 'Total' : 'Per day'} step="0.01" title={computed !== null ? `≈ ${def.prefix}${computed.toFixed(2)}${def.suffix} per day` : undefined} />
                                     </div>
                                   </td>
                                 )
                               }
                               // percent entry
                               const isQaMetric = !teamDef.qaNotInMis && def.key === teamDef.qaMetricKey
+                              const qaAvg = isQaMetric ? inputQaAverages[g.name] : null
+                              const typedVal = parseFloat(g[def.key])
+                              const qaTitle = qaAvg != null && !isNaN(typedVal) && Math.abs(typedVal - qaAvg) >= 0.005 ? `⚠ Review avg is ${qaAvg}` : undefined
                               return (
                                 <td key={def.key}>
-                                  <div className="cell-col">
-                                    <input type="number" value={g[def.key]} onChange={e => handleGuideChange(i, def.key, e.target.value)} placeholder={`0–${def.maxEntry || 100}`} step="0.01" min="0" max={def.maxEntry || 100} />
-                                    {isQaMetric && (() => {
-                                      const avg = inputQaAverages[g.name]
-                                      if (avg == null) return null
-                                      const typed = parseFloat(g[def.key])
-                                      if (isNaN(typed) || Math.abs(typed - avg) < 0.005) return null
-                                      return <span className="qa-mismatch-hint" title={`Review average is ${avg}`}>⚠ avg {avg}</span>
-                                    })()}
-                                  </div>
+                                  <input type="number" value={g[def.key]} onChange={e => handleGuideChange(i, def.key, e.target.value)} placeholder={`0–${def.maxEntry || 100}`} step="0.01" min="0" max={def.maxEntry || 100} title={qaTitle} style={qaTitle ? { borderColor: 'var(--amber)' } : undefined} />
                                 </td>
                               )
                             })}
