@@ -40,7 +40,7 @@ export const TEAM_DEFS = {
     fullName: 'Activations',
     metricDefs: [
       {
-        key: 'agpv_win_rate', label: 'aGPV Win Rate', fullName: 'aGPV Win Rate',
+        key: 'agpv_win_rate', label: 'aGPV Win Rate', overviewLabel: 'WR', fullName: 'aGPV Win Rate',
         prefix: '', suffix: '%', weight: 1.0, rail: { min: -25, max: 25 },
         entryMode: 'percent', channelSplit: false,
         configKey: 'agpvWinRate', configKeyVoice: null, configKeyMessaging: null,
@@ -49,7 +49,7 @@ export const TEAM_DEFS = {
         isQuality: false, maxEntry: 100,
       },
       {
-        key: 'work_orders_day', label: 'Work Orders/Day', fullName: 'Work Orders Per Day',
+        key: 'work_orders_day', label: 'Work Orders/Day', overviewLabel: 'WOD', fullName: 'Work Orders Per Day',
         prefix: '', suffix: '/day', weight: 1.0, rail: { min: -25, max: 25 },
         entryMode: 'perday', channelSplit: false,
         configKey: 'workOrdersDay', configKeyVoice: null, configKeyMessaging: null,
@@ -58,7 +58,7 @@ export const TEAM_DEFS = {
         isQuality: false, maxEntry: null,
       },
       {
-        key: 'aqi', label: 'AQI', fullName: 'Activation Quality Index',
+        key: 'aqi', label: 'AQI', overviewLabel: 'AQI', fullName: 'Activation Quality Index',
         prefix: '', suffix: '%', weight: 1.0, rail: { min: -25, max: 25 },
         entryMode: 'percent', channelSplit: false,
         configKey: 'aqi', configKeyVoice: null, configKeyMessaging: null,
@@ -80,7 +80,7 @@ export const TEAM_DEFS = {
     fullName: 'Escalations',
     metricDefs: [
       {
-        key: 'case_closures_day', label: 'Case Closures/Day', fullName: 'Case Closures Per Day',
+        key: 'case_closures_day', label: 'Case Closures/Day', overviewLabel: 'CCD', fullName: 'Case Closures Per Day',
         prefix: '', suffix: '/day', weight: 1.0, rail: { min: -25, max: 25 },
         entryMode: 'perday', channelSplit: false,
         configKey: 'caseClosuresDay', configKeyVoice: null, configKeyMessaging: null,
@@ -89,14 +89,14 @@ export const TEAM_DEFS = {
         isQuality: false, maxEntry: null,
       },
       {
-        key: 'resolution_rate', label: 'Resolution Rate', fullName: 'Resolution Rate',
+        key: 'resolution_rate', label: 'Resolution Rate', overviewLabel: 'RR', fullName: 'Resolution Rate',
         prefix: '', suffix: '%', weight: 1.0, rail: { min: -25, max: 25 },
         entryMode: 'percent', channelSplit: false,
         configKey: 'resolutionRate', configKeyVoice: null, configKeyMessaging: null,
         tamTargets: false, tamTargetMap: null, isQuality: false, maxEntry: 100,
       },
       {
-        key: 'non_queue_work_day', label: 'Non-Queue Work/Day', fullName: 'Non-Queue Work Per Day',
+        key: 'non_queue_work_day', label: 'Non-Queue Work/Day', overviewLabel: 'NQW', fullName: 'Non-Queue Work Per Day',
         prefix: '', suffix: '/day', weight: 1.0, rail: { min: -25, max: 25 },
         entryMode: 'perday', channelSplit: false,
         configKey: 'nonQueueWorkDay', configKeyVoice: null, configKeyMessaging: null,

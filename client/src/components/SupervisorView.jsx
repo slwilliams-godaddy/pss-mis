@@ -117,6 +117,7 @@ export default function SupervisorView({ team, currentUser, activeTab: externalT
   const [inputQaAverages, setInputQaAverages] = useState({})
 
   const userEdited = useRef(false)
+  const qaMonthInitialized = useRef(false)
 
   // Archive list
   const [archivedMonths, setArchivedMonths] = useState(null)
@@ -151,6 +152,7 @@ export default function SupervisorView({ team, currentUser, activeTab: externalT
   const [editingReviewId, setEditingReviewId] = useState(null)
   const [editReviewScore, setEditReviewScore] = useState('')
   const [editReviewDate, setEditReviewDate] = useState('')
+  const [qaEditGuide, setQaEditGuide] = useState(null)
 
   const isCurrentMonth = inputMonth === currentConfigMonth
 
@@ -206,12 +208,14 @@ export default function SupervisorView({ team, currentUser, activeTab: externalT
       setInputConfigDraft(cfg)
       setCurrentConfigMonth(cfg.month)
       setInputMonth(cfg.month)
-      setQaMonth(cfg.month)
     }).catch(() => {})
     return () => { cancelled = true }
   }, [team])
 
-  useEffect(() => { fetchArchivedMonths() }, [team])
+  useEffect(() => {
+    qaMonthInitialized.current = false
+    fetchArchivedMonths()
+  }, [team])
 
   useEffect(() => { setAllArchiveData(null) }, [archivedMonths])
 
@@ -403,14 +407,31 @@ export default function SupervisorView({ team, currentUser, activeTab: externalT
     if (tab !== 'qa') return
     let cancelled = false
     setQaLoading(true); setQaError('')
-    getQaReviews(qaMonth, team)
-      .then(data => { if (!cancelled) { setQaReviews(data); setQaLoading(false) } })
+    Promise.all([
+      getQaReviews(qaMonth, team),
+      getGuides(team),
+    ])
+      .then(([reviews, guidesData]) => {
+        if (cancelled) return
+        const guideNames = guidesData.filter(g => g.active).map(g => g.name)
+        // On first open: if current month is empty, try the nearest past month with data
+        if (reviews.length === 0 && !qaMonthInitialized.current && archivedMonths?.length) {
+          const past = archivedMonths.filter(m => m < qaMonth)
+          if (past.length > 0) {
+            qaMonthInitialized.current = true
+            setQaGuideNames(guideNames)
+            setQaMonth(past[0])
+            return // keep qaLoading = true; next effect run will resolve it
+          }
+        }
+        qaMonthInitialized.current = true
+        setQaGuideNames(guideNames)
+        setQaReviews(reviews)
+        setQaLoading(false)
+      })
       .catch(err => { if (!cancelled) { setQaError(err.message); setQaLoading(false) } })
-    getGuides(team)
-      .then(guides => { if (!cancelled) setQaGuideNames(guides.filter(g => g.active).map(g => g.name)) })
-      .catch(() => {})
     return () => { cancelled = true }
-  }, [tab, qaMonth, team])
+  }, [tab, qaMonth, team, archivedMonths])
 
   const handleAddGuide = async (e) => {
     e.preventDefault()
@@ -740,6 +761,7 @@ export default function SupervisorView({ team, currentUser, activeTab: externalT
                       <tr>
                         <th>Guide Name</th>
                         {teamDef.hasChannel && <th>Channel</th>}
+                        {hasTamRoles && <th style={{ minWidth: '72px' }}>Level</th>}
                         {metricDefs.map(def => <th key={def.key}>{def.label} {thHint(def)}</th>)}
                         <th>Accountable Days</th>
                         <th>MIS</th>
@@ -759,7 +781,14 @@ export default function SupervisorView({ team, currentUser, activeTab: externalT
                               <td>
                                 <select value={g.channel || 'voice'} onChange={e => handleGuideChange(i, 'channel', e.target.value)} className="channel-select">
                                   <option value="voice">Voice</option>
-                                  <option value="messaging">Messaging</option>
+                                  <option value="messaging">Msg.</option>
+                                </select>
+                              </td>
+                            )}
+                            {hasTamRoles && (
+                              <td style={{ minWidth: '72px' }}>
+                                <select value={g.tam_role || defaultTamRole} onChange={e => handleGuideChange(i, 'tam_role', e.target.value)} className="channel-select">
+                                  {tamRoleOptions.map(r => <option key={r} value={r}>{r.replace('Level ', 'Lvl. ')}</option>)}
                                 </select>
                               </td>
                             )}
@@ -785,7 +814,7 @@ export default function SupervisorView({ team, currentUser, activeTab: externalT
                               const qaTitle = qaAvg != null && !isNaN(typedVal) && Math.abs(typedVal - qaAvg) >= 0.005 ? `⚠ Review avg is ${qaAvg}` : undefined
                               return (
                                 <td key={def.key}>
-                                  <input type="number" value={g[def.key]} onChange={e => handleGuideChange(i, def.key, e.target.value)} placeholder={`0–${def.maxEntry || 100}`} step="0.01" min="0" max={def.maxEntry || 100} title={qaTitle} style={qaTitle ? { borderColor: 'var(--amber)' } : undefined} />
+                                  <input type="number" value={g[def.key]} onChange={e => handleGuideChange(i, def.key, e.target.value)} placeholder="%" step="0.01" min="0" max={def.maxEntry || 100} title={qaTitle} style={qaTitle ? { borderColor: 'var(--amber)' } : undefined} />
                                 </td>
                               )
                             })}
@@ -845,86 +874,103 @@ export default function SupervisorView({ team, currentUser, activeTab: externalT
             <select className="input-month-select" value={qaMonth} onChange={e => setQaMonth(e.target.value)}>
               {allInputMonths.map(m => <option key={m} value={m}>{fmtMonth(m)}</option>)}
             </select>
-            <div className="input-controls-divider" />
-            <select value={qaGuideName} onChange={e => setQaGuideName(e.target.value)}>
-              <option value="">— Guide —</option>
-              {qaGuideNames.map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
-            <input type="number" min="0" max="100" placeholder="Score (0–100)" value={qaScore} onChange={e => setQaScore(e.target.value)} style={{ width: '120px' }} />
-            <input type="date" value={qaDate} onChange={e => setQaDate(e.target.value)} />
-            <button className="btn-primary" onClick={handleAddQaReview}>Add Review</button>
-            {qaAddMsg && <span className="qa-msg-error">{qaAddMsg}</span>}
           </div>
 
           {qaLoading ? <p className="subtext">Loading…</p>
             : qaError ? <p className="error-msg">{qaError}</p>
             : groupedQaReviews.length === 0 ? <p className="subtext">No active guides on this team.</p>
             : (
-              <table className="qa-flat-table">
+              <table className="qa-compact-table">
                 <thead>
                   <tr>
                     <th>Guide</th>
                     <th>Reviews</th>
-                    <th>Avg</th>
-                    <th>Date</th>
-                    <th>Score</th>
+                    <th>Avg Score</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {groupedQaReviews.map(({ name, reviews, avg }) => (
-                    reviews.length === 0 ? (
-                      <tr key={name} className="qa-guide-row">
-                        <td className="qa-flat-name">{name}</td>
-                        <td><span className="qa-count-badge qa-warn">0 — min 4 required</span></td>
-                        <td colSpan={4} />
-                      </tr>
-                    ) : (
-                      reviews.map((r, ri) => (
-                        <tr key={r.id} className={ri === 0 ? 'qa-guide-row' : 'qa-review-row'}>
-                          {ri === 0 ? (
-                            <td className="qa-flat-name" rowSpan={reviews.length}>
-                              <span>{name}</span>
-                            </td>
-                          ) : null}
-                          {ri === 0 ? (
-                            <td className="qa-flat-count" rowSpan={reviews.length}>
-                              <span className={`qa-count-badge${reviews.length < 4 ? ' qa-warn' : ''}`}>
-                                {reviews.length}{reviews.length < 4 ? ' ⚠' : ''}
-                              </span>
-                            </td>
-                          ) : null}
-                          {ri === 0 ? (
-                            <td className="qa-flat-avg" rowSpan={reviews.length}>
-                              {avg !== null ? avg.toFixed(2) : '—'}
-                            </td>
-                          ) : null}
-                          {editingReviewId === r.id ? (
-                            <>
+                    <tr key={name}>
+                      <td className="qa-compact-name">{name}</td>
+                      <td>
+                        <span className={`qa-count-badge${reviews.length < 4 ? ' qa-warn' : ''}`}>
+                          {reviews.length < 4 ? `${reviews.length} ⚠ — need ${4 - reviews.length} more` : reviews.length}
+                        </span>
+                      </td>
+                      <td className="qa-compact-avg">{avg !== null ? avg.toFixed(2) : '—'}</td>
+                      <td>
+                        <button className="btn-sm btn-ghost" onClick={() => {
+                          setQaEditGuide(name)
+                          setQaGuideName(name)
+                          setEditingReviewId(null)
+                          setQaScore('')
+                          setQaDate(new Date().toISOString().slice(0, 10))
+                          setQaAddMsg('')
+                        }}>Edit</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+          {qaEditGuide && (() => {
+            const guideData = groupedQaReviews.find(g => g.name === qaEditGuide)
+            return (
+              <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) { setQaEditGuide(null); setEditingReviewId(null) } }}>
+                <div className="modal-card" style={{ maxWidth: '460px' }}>
+                  <div className="modal-header">
+                    <div>
+                      <h2>{qaEditGuide}</h2>
+                      <p>{fmtMonth(qaMonth)}</p>
+                    </div>
+                    <button className="modal-close btn-ghost" onClick={() => { setQaEditGuide(null); setEditingReviewId(null) }}>✕</button>
+                  </div>
+
+                  {guideData?.reviews.length > 0 ? (
+                    <table className="qa-modal-table">
+                      <thead>
+                        <tr><th>Date</th><th>Score</th><th></th></tr>
+                      </thead>
+                      <tbody>
+                        {guideData.reviews.map(r => (
+                          editingReviewId === r.id ? (
+                            <tr key={r.id}>
                               <td><input type="date" className="qa-edit-input" value={editReviewDate} onChange={e => setEditReviewDate(e.target.value)} /></td>
                               <td><input type="number" className="qa-edit-input" min="0" max="100" step="0.01" value={editReviewScore} onChange={e => setEditReviewScore(e.target.value)} /></td>
                               <td className="qa-row-actions">
                                 <button className="btn-sm btn-primary" onClick={() => handleSaveEditReview(r)}>Save</button>
                                 <button className="btn-sm btn-ghost" onClick={() => setEditingReviewId(null)}>Cancel</button>
                               </td>
-                            </>
+                            </tr>
                           ) : (
-                            <>
-                              <td className="qa-flat-date">{r.review_date}</td>
-                              <td className="qa-flat-score">{Number(r.score).toFixed(2)}</td>
+                            <tr key={r.id}>
+                              <td>{r.review_date}</td>
+                              <td>{Number(r.score).toFixed(2)}</td>
                               <td className="qa-row-actions">
                                 <button className="btn-sm btn-ghost" onClick={() => { setEditingReviewId(r.id); setEditReviewScore(String(r.score)); setEditReviewDate(r.review_date) }}>Edit</button>
                                 <button className="btn-sm btn-danger" onClick={() => handleDeleteQaReview(r)}>✕</button>
                               </td>
-                            </>
-                          )}
-                        </tr>
-                      ))
-                    )
-                  ))}
-                </tbody>
-              </table>
-            )}
+                            </tr>
+                          )
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <p className="subtext" style={{ padding: '0.25rem 0 0.75rem' }}>No reviews yet for this month.</p>
+                  )}
+
+                  <div className="qa-modal-add">
+                    <input type="date" value={qaDate} onChange={e => setQaDate(e.target.value)} />
+                    <input type="number" min="0" max="100" placeholder="Score (0–100)" value={qaScore} onChange={e => setQaScore(e.target.value)} style={{ width: '120px' }} />
+                    <button className="btn-primary" onClick={handleAddQaReview}>Add</button>
+                    {qaAddMsg && <span className="qa-msg-error">{qaAddMsg}</span>}
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
         </div>
       )}
 
@@ -1217,7 +1263,7 @@ export default function SupervisorView({ team, currentUser, activeTab: externalT
                 </table>
               </div>
 
-              <div style={{ marginTop: '0.75rem' }}>
+              <div>
                 <button className="btn-primary" onClick={() => { setShowAddGuide(true); setAddGuideMsg(null) }}>+ Add Guide</button>
               </div>
 

@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  base: '/pss-mis/',
+  base: '/cas-performance/',
   server: {
     port: 5173,
   }

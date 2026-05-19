@@ -529,19 +529,21 @@ export async function getTechTitansData(months) {
     const actuals = {}
     for (const def of metricDefs) actuals[def.key] = Number(row[def.key])
     const configByKey = resolveConfigByKey(metricDefs, config, row.channel, row.tam_role)
-    const mis = calculateUnboundedMISGeneric(actuals, configByKey, metricDefs)
+    const mis = calculateMISGeneric(actuals, configByKey, metricDefs)
+    const misUnbound = calculateUnboundedMISGeneric(actuals, configByKey, metricDefs)
     if (!guideMap[row.guide_name]) {
       guideMap[row.guide_name] = { name: row.guide_name, team, channel: row.channel, months: {} }
     }
-    guideMap[row.guide_name].months[row.month] = mis
+    guideMap[row.guide_name].months[row.month] = { ...misUnbound, boundedTotal: mis.total }
   })
 
   return Object.values(guideMap)
     .map(g => ({
       ...g,
-      quarterTotal: Math.round(Object.values(g.months).reduce((s, m) => s + m.total, 0) * 100) / 100,
+      quarterTotal:        Math.round(Object.values(g.months).reduce((s, m) => s + m.total,        0) * 100) / 100,
+      quarterTotalBounded: Math.round(Object.values(g.months).reduce((s, m) => s + m.boundedTotal, 0) * 100) / 100,
     }))
-    .sort((a, b) => b.quarterTotal - a.quarterTotal)
+    .sort((a, b) => b.quarterTotalBounded - a.quarterTotalBounded || b.quarterTotal - a.quarterTotal)
 }
 
 export async function publishMonth(month) {
@@ -657,6 +659,26 @@ export async function getActivityLog(limit = 200) {
   return data
 }
 
+// ── AI Analysis cache ─────────────────────────────────────────────────────────
+
+export async function getAiAnalysis() {
+  const { data, error } = await supabase
+    .from('ai_analysis_cache')
+    .select('*')
+    .order('generated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return data
+}
+
+export async function saveAiAnalysis(content, generatedBy) {
+  const { error } = await supabase
+    .from('ai_analysis_cache')
+    .insert({ content, generated_by: generatedBy })
+  if (error) throw new Error(error.message)
+}
+
 // ── Manager overview ──────────────────────────────────────────────────────────
 
 export async function getTeamMonthlyAverages(team) {
@@ -693,8 +715,11 @@ export async function getTeamMonthlyAverages(team) {
       if (!pairs.length) return null
       const avg = arr => Math.round(arr.reduce((s, v) => s + v, 0) / arr.length * 100) / 100
       const metrics = {}
+      const avgTargets = {}
       for (const def of metricDefs) {
         metrics[def.key] = avg(pairs.map(p => p.actuals[def.key]))
+        const targets = pairs.map(p => resolveConfigByKey(metricDefs, config, p.channel, p.tam_role)[def.configKey]?.target).filter(t => t != null)
+        avgTargets[def.key] = targets.length ? avg(targets) : null
       }
       const teamDef = TEAM_DEFS[team]
       const breakdown = {}
@@ -710,6 +735,7 @@ export async function getTeamMonthlyAverages(team) {
         guideCount: pairs.length,
         breakdown,
         metrics,
+        avgTargets,
       }
     })
     .filter(Boolean)

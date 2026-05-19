@@ -117,16 +117,17 @@ export default function TechTitans({ guideUser, anonymize = false }) {
                           return (
                             <td key={m} className="tt-score">
                               {ms
-                                ? <span style={{ color: scoreColor(ms.total) }}>{fmtScore(ms.total)}</span>
+                                ? <span style={{ color: scoreColor(ms.boundedTotal) }}>{fmtScore(ms.boundedTotal)}</span>
                                 : <span className="tt-empty">—</span>
                               }
                             </td>
                           )
                         })}
                         <td className="tt-total">
-                          <span style={{ color: scoreColor(guide.quarterTotal), fontWeight: 700 }}>
-                            {fmtScore(guide.quarterTotal)}
+                          <span style={{ color: scoreColor(guide.quarterTotalBounded), fontWeight: 700 }}>
+                            {fmtScore(guide.quarterTotalBounded)}
                           </span>
+                          <span className="tt-unbound-hint">{fmtScore(guide.quarterTotal)} uncapped</span>
                         </td>
                       </tr>
                     )

@@ -1,13 +1,15 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import SupervisorView from './SupervisorView'
 import TechTitans from './TechTitans'
 import {
   getTeamMonthlyAverages, getConfigMonths, getConfigForMonth, getConfig, saveConfig,
   getManagerUsernames, addManagerUser, removeManagerUser,
   getSupervisorUsernames, addSupervisorUser, removeSupervisorUser,
-  getActivityLog,
+  getActivityLog, logActivity,
+  getAiAnalysis, saveAiAnalysis,
 } from '../utils/storage'
 import { TEAM_DEFS } from '../utils/teamConfig'
+import { callGoCaaS } from '../utils/gocaas'
 
 const TEAM_IDS = ['pss', 'activations', 'escalations']
 
@@ -63,6 +65,7 @@ export default function ManagerView({ leaderUser, canManageUsers = true, onLogou
           loading={loading}
           error={error}
           onSetTargets={setTargetTeam}
+          currentUser={leaderUser?.username}
         />
       )}
       {activeTab === 'titans'       && <div className="manager-overview"><TechTitans /></div>}
@@ -85,167 +88,305 @@ export default function ManagerView({ leaderUser, canManageUsers = true, onLogou
 
 // ── Overview Tab ──────────────────────────────────────────────────────────────
 
-function OverviewTab({ trendData, loading, error, onSetTargets }) {
+const signColor = d => d > 0 ? 'var(--green)' : d < 0 ? 'var(--red)' : 'var(--text-muted)'
+const fmtDeltaNum = (d, toFixed = 2) =>
+  d === null ? null : `${d > 0 ? '▲' : d < 0 ? '▼' : '—'} ${Math.abs(d).toFixed(toFixed)}`
+const vtPct = (cur, tgt) => (cur != null && tgt != null && tgt !== 0) ? Math.round((cur - tgt) / tgt * 1000) / 10 : null
+const fmtVtPct = (cur, tgt) => { const p = vtPct(cur, tgt); return p === null ? null : `${p > 0 ? '▲' : p < 0 ? '▼' : '—'} ${Math.abs(p).toFixed(1)}%` }
+
+function buildAnalysisPrompt(trendData) {
+  const SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const fmtM = m => `${SHORT_MONTHS[+m.split('-')[1] - 1]} ${m.split('-')[0]}`
+
+  const sections = TEAM_IDS.map(team => {
+    const teamDef = TEAM_DEFS[team]
+    const data = trendData[team].slice(-4)
+    if (data.length === 0) return `${teamDef.label}: No data available.`
+    const rows = data.map(d => {
+      const metricStr = teamDef.metricDefs.map(def => {
+        const val = d.metrics?.[def.key]
+        const tgt = d.avgTargets?.[def.key]
+        const vt = (val != null && tgt != null && tgt !== 0) ? ((val - tgt) / tgt * 100).toFixed(1) : null
+        return `${def.overviewLabel || def.label}: ${val != null ? val.toFixed(2) : 'N/A'}${vt !== null ? ` (${+vt > 0 ? '+' : ''}${vt}% vs target)` : ''}`
+      }).join(', ')
+      return `  ${fmtM(d.month)}: MIS=${d.avgMIS.toFixed(2)}, PassRate=${Math.round(d.passRate * 100)}%, Guides=${d.guideCount}, [${metricStr}]`
+    }).join('\n')
+    return `${teamDef.label} (${teamDef.fullName}):\n${rows}`
+  })
+
+  return `You are a performance coach reviewing monthly data for three sales teams. Each team has guides (employees) whose work is measured against targets each month.
+
+Here is the data:
+
+${sections.join('\n\n')}
+
+"MIS" is an overall performance score — positive means the team is beating targets on average, negative means they're falling short. "PassRate" is the share of guides who are meeting or exceeding their targets that month.
+
+Write in plain, direct English. No jargon, no bullet headers.
+
+Respond ONLY with valid JSON, no markdown, no extra text:
+{
+  "summary": "2-3 sentences on how the teams are doing overall and the clearest trend you see across all three.",
+  "highlights": [
+    { "type": "positive", "text": "One clear observation. Name the team and cite the actual numbers." }
+  ],
+  "targetAdvice": [
+    { "team": "PSS", "advice": "Name the specific metric, say whether to raise or lower the target, give a concrete number, and explain why in one sentence." }
+  ]
+}
+
+For targetAdvice: if a team is consistently beating a metric target every month, that target is too easy — tell them to raise it and say by how much. If they're consistently missing, say whether to lower the target or flag it as a growth area. Be direct — say things like "Raise the CPD target from 17 to 19" not "consider adjusting targets". Include one advice entry per team (PSS, Activations, Escalations). Include 3-5 highlights with a mix of positive, negative, and neutral types.
+
+Two priorities should shape every recommendation: First, parity — the three teams compete against each other in a cross-team leaderboard called Tech Titans, so MIS scores need to be roughly comparable across teams. If one team's scores are consistently much higher or lower than the others, call that out and suggest how to bring them in line. Second, keep the fail rate low — very few guides should have a negative MIS score in any given month. Targets should be set high enough to drive month-over-month improvement but not so high that a large share of the team ends up failing. Flag any team where the pass rate looks out of balance with the others.`
+}
+
+function parseAIResponse(text) {
+  const stripped = text.replace(/^```(?:json)?\s*/m, '').replace(/\s*```\s*$/m, '').trim()
+  return JSON.parse(stripped)
+}
+
+const fmtAiTs = ts => new Date(ts).toLocaleString('en-US', {
+  month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
+})
+
+function OverviewTab({ trendData, loading, error, onSetTargets, currentUser }) {
+  const [aiAnalysis, setAiAnalysis] = useState(null)
+  const [aiMeta, setAiMeta]         = useState(null)
+  const [aiLoading, setAiLoading]   = useState(false)
+  const [aiError, setAiError]       = useState('')
+  const abortRef = useRef(null)
+
+  const generate = (data, username) => {
+    if (abortRef.current) abortRef.current.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    setAiLoading(true)
+    setAiError('')
+    callGoCaaS(buildAnalysisPrompt(data), { signal: controller.signal })
+      .then(text => {
+        const parsed = parseAIResponse(text)
+        saveAiAnalysis(parsed, username).catch(() => {})
+        logActivity({ username, team: null, action: 'ai_analysis_generated' })
+        setAiAnalysis(parsed)
+        setAiMeta({ generatedAt: new Date().toISOString(), generatedBy: username })
+        setAiLoading(false)
+      })
+      .catch(err => {
+        if (err.name !== 'AbortError') { setAiError(err.message); setAiLoading(false) }
+      })
+  }
+
+  useEffect(() => {
+    if (!trendData) return
+    let cancelled = false
+    setAiLoading(true)
+    setAiError('')
+    getAiAnalysis()
+      .then(cached => {
+        if (cancelled) return
+        if (cached) {
+          setAiAnalysis(cached.content)
+          setAiMeta({ generatedAt: cached.generated_at, generatedBy: cached.generated_by })
+          setAiLoading(false)
+        } else {
+          generate(trendData, currentUser)
+        }
+      })
+      .catch(err => {
+        if (!cancelled) { setAiError(err.message); setAiLoading(false) }
+      })
+    return () => { cancelled = true; abortRef.current?.abort() }
+  }, [trendData])
+
+  const handleRegenerate = () => {
+    if (!trendData || aiLoading) return
+    generate(trendData, currentUser)
+  }
+
   if (loading) return <p className="subtext" style={{ padding: '2rem' }}>Loading team data…</p>
   if (error)   return <p className="error-msg" style={{ padding: '2rem' }}>{error}</p>
   if (!trendData) return null
 
   const latestEntry = arr => arr.length ? arr[arr.length - 1] : null
   const prevEntry   = arr => arr.length >= 2 ? arr[arr.length - 2] : null
+  const diff = (a, b) => (a != null && b != null) ? Math.round((a - b) * 100) / 100 : null
 
   const allMonths = [...new Set(
     TEAM_IDS.flatMap(t => trendData[t].map(d => d.month))
-  )].sort().slice(-6)
+  )].sort().slice(-5)
 
   return (
     <div className="manager-overview">
 
-      {/* ── Summary cards ── */}
+      {/* ── Team cards ── */}
       <div className="manager-team-cards">
         {TEAM_IDS.map(team => {
-          const data   = trendData[team]
-          const latest = latestEntry(data)
-          const prev   = prevEntry(data)
-          const delta  = latest && prev
-            ? Math.round((latest.avgMIS - prev.avgMIS) * 100) / 100
-            : null
+          const teamDef = TEAM_DEFS[team]
+          const data    = trendData[team]
+          const latest  = latestEntry(data)
+          const prev    = prevEntry(data)
 
           return (
-            <div key={team} className="manager-team-card trend-card">
+            <div key={team} className="manager-team-card">
               <div className="manager-card-header">
-                <span className={`tt-team-badge tt-team-${team}`}>{TEAM_DEFS[team]?.label || team}</span>
+                <span className={`tt-team-badge tt-team-${team}`}>{teamDef?.label || team}</span>
                 {latest && <span className="manager-card-month">{fmtMonthShort(latest.month)}</span>}
               </div>
+
               {latest ? (
-                <>
-                  <div className="manager-card-stat">
-                    <span className="manager-card-label">Avg MIS</span>
-                    <span className="manager-card-value" style={{ color: misColor(latest.avgMIS) }}>
-                      {fmtMIS(latest.avgMIS)}
-                    </span>
-                    {delta !== null && (
-                      <span className="manager-card-delta" style={{ color: misColor(delta) }}>
-                        {delta > 0 ? '▲' : delta < 0 ? '▼' : '='} {Math.abs(delta).toFixed(2)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="manager-card-stat">
-                    <span className="manager-card-label">Pass Rate</span>
-                    <span className="manager-card-value">{Math.round(latest.passRate * 100)}%</span>
-                  </div>
-                  <div className="manager-card-stat">
-                    <span className="manager-card-label">Guides</span>
-                    <span className="manager-card-value">{latest.guideCount}</span>
-                  </div>
-                  {latest.breakdown && Object.keys(latest.breakdown).length > 0 && (
-                    <div className="manager-card-breakdown">
-                      {Object.entries(latest.breakdown).map(([key, count]) => (
-                        <span key={key} className="manager-card-breakdown-item">
-                          {key.charAt(0).toUpperCase() + key.slice(1)}: {count}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </>
+                <table className="overview-stat-table">
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th>Val</th>
+                      <th>vT</th>
+                      <th>MoM</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {teamDef.metricDefs.map(def => {
+                      const cur = latest.metrics?.[def.key]
+                      const prv = prev?.metrics?.[def.key]
+                      const tgt = latest.avgTargets?.[def.key]
+                      const vt  = vtPct(cur, tgt)
+                      const mom = diff(cur, prv)
+                      return (
+                        <tr key={def.key}>
+                          <td className="ostat-label">{def.overviewLabel || def.label}</td>
+                          <td className="ostat-val">{cur != null ? fmtMetric(def, cur) : '—'}</td>
+                          <td className="ostat-delta" style={vt !== null ? { color: signColor(vt) } : {}}>
+                            {fmtVtPct(cur, tgt) ?? '—'}
+                          </td>
+                          <td className="ostat-delta" style={mom !== null ? { color: signColor(mom) } : {}}>
+                            {fmtDeltaNum(mom, 2) ?? '—'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    <tr className="ostat-divider">
+                      <td className="ostat-label">Avg MIS</td>
+                      <td className="ostat-val" style={{ color: misColor(latest.avgMIS) }}>{fmtMIS(latest.avgMIS)}</td>
+                      <td className="ostat-delta">—</td>
+                      <td className="ostat-delta" style={{ color: signColor(diff(latest.avgMIS, prev?.avgMIS)) }}>
+                        {fmtDeltaNum(diff(latest.avgMIS, prev?.avgMIS)) ?? '—'}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="ostat-label">Pass Rate</td>
+                      <td className="ostat-val">{Math.round(latest.passRate * 100)}%</td>
+                      <td className="ostat-delta">—</td>
+                      <td className="ostat-delta" style={{ color: signColor(diff(latest.passRate, prev?.passRate)) }}>
+                        {(() => {
+                          const d = diff(latest.passRate, prev?.passRate)
+                          return d !== null ? `${d > 0 ? '▲' : d < 0 ? '▼' : '—'} ${Math.abs(Math.round(d * 100))}pp` : '—'
+                        })()}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               ) : (
                 <p className="subtext">No data yet.</p>
               )}
-              <button
-                className="btn-secondary manager-targets-btn"
-                onClick={() => onSetTargets(team)}
-              >
-                Set {TEAM_DEFS[team]?.label} Targets
+
+              <button className="btn-secondary manager-targets-btn" onClick={() => onSetTargets(team)}>
+                Set Targets
               </button>
             </div>
           )
         })}
       </div>
 
+      {/* ── Cross-team MIS trend ── */}
       {allMonths.length > 0 && (
-        <>
-          {/* ── Cross-team MIS trend ── */}
-          <div>
-            <h3 className="manager-section-label">Cross-Team Avg MIS Trend</h3>
-            <div className="tt-table-wrap">
-              <table className="tt-table">
-                <thead>
-                  <tr>
-                    <th>Month</th>
-                    {TEAM_IDS.map(t => <th key={t}>{TEAM_DEFS[t]?.label || t}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {allMonths.map(month => (
-                    <tr key={month}>
-                      <td>{fmtMonthFull(month)}</td>
-                      {TEAM_IDS.map(t => {
-                        const entry = trendData[t].find(d => d.month === month)
-                        return (
-                          <td key={t} className="tt-score">
-                            {entry
-                              ? <span style={{ color: misColor(entry.avgMIS) }}>{fmtMIS(entry.avgMIS)}</span>
-                              : <span className="tt-empty">—</span>
-                            }
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* ── Per-team metric trends ── */}
-          <div>
-            <h3 className="manager-section-label">Metric Averages by Team</h3>
-            <div className="manager-metric-tables">
-              {TEAM_IDS.map(team => {
-                const teamDef = TEAM_DEFS[team]
-                const rows    = trendData[team].filter(d => allMonths.includes(d.month))
-                if (!rows.length) return null
-                return (
-                  <div key={team} className="manager-metric-section tt-table-wrap">
-                    <table className="tt-table">
-                      <thead>
-                        <tr>
-                          <th className="manager-metric-team-col">
-                            <span className={`tt-team-badge tt-team-${team}`}>{teamDef.label}</span>
-                          </th>
-                          {teamDef.metricDefs.map(def => (
-                            <th key={def.key} className="manager-metric-col">{def.label}</th>
-                          ))}
-                          <th className="manager-metric-col">Avg MIS</th>
-                          <th className="manager-metric-col">Pass %</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rows.map(entry => (
-                          <tr key={entry.month}>
-                            <td className="manager-metric-month">{fmtMonthFull(entry.month)}</td>
-                            {teamDef.metricDefs.map(def => (
-                              <td key={def.key} className="tt-score">
-                                {entry.metrics?.[def.key] != null
-                                  ? fmtMetric(def, entry.metrics[def.key])
-                                  : <span className="tt-empty">—</span>
-                                }
-                              </td>
-                            ))}
-                            <td className="tt-score">
-                              <span style={{ color: misColor(entry.avgMIS) }}>{fmtMIS(entry.avgMIS)}</span>
-                            </td>
-                            <td className="tt-score">{Math.round(entry.passRate * 100)}%</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </>
+        <div>
+          <h3 className="manager-section-label">Avg MIS Trend</h3>
+          <table className="overview-trend-table">
+            <thead>
+              <tr>
+                <th></th>
+                {TEAM_IDS.map(t => <th key={t} className="otrend-team">{TEAM_DEFS[t]?.label || t}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {allMonths.map(month => (
+                <tr key={month}>
+                  <td className="otrend-month">{fmtMonthFull(month)}</td>
+                  {TEAM_IDS.map(t => {
+                    const entry = trendData[t].find(d => d.month === month)
+                    return (
+                      <td key={t} className="otrend-val">
+                        {entry
+                          ? <span style={{ color: misColor(entry.avgMIS) }}>{fmtMIS(entry.avgMIS)}</span>
+                          : <span className="tt-empty">—</span>
+                        }
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
+
+      {/* ── AI Analysis ── */}
+      <div className="ai-analysis-section">
+        <div className="ai-analysis-header">
+          <span className="ai-analysis-title">AI Analysis</span>
+          <div className="ai-analysis-controls">
+            {aiMeta && !aiLoading && (
+              <span className="ai-meta">
+                {fmtAiTs(aiMeta.generatedAt)} · {aiMeta.generatedBy}
+              </span>
+            )}
+            <button
+              className="btn-ghost btn-sm"
+              onClick={handleRegenerate}
+              disabled={aiLoading}
+            >
+              {aiLoading ? 'Generating…' : 'Regenerate'}
+            </button>
+          </div>
+        </div>
+        {aiLoading && (
+          <div className="ai-analysis-loading">
+            <span className="ai-spinner" />
+            Analyzing performance data…
+          </div>
+        )}
+        {aiError && (
+          <p className="error-msg" style={{ fontSize: '0.85rem' }}>{aiError}</p>
+        )}
+        {aiAnalysis && (
+          <>
+            {aiAnalysis.summary && (
+              <p className="ai-summary">{aiAnalysis.summary}</p>
+            )}
+            {aiAnalysis.highlights?.length > 0 && (
+              <div className="ai-highlights">
+                {aiAnalysis.highlights.map((h, i) => (
+                  <span key={i} className={`ai-highlight ai-highlight-${h.type}`}>{h.text}</span>
+                ))}
+              </div>
+            )}
+            {aiAnalysis.targetAdvice?.length > 0 && (
+              <div>
+                <div className="ai-analysis-subtitle">Target Recommendations</div>
+                <div className="ai-target-advice">
+                  {aiAnalysis.targetAdvice.map((a, i) => (
+                    <div key={i} className="ai-advice-row">
+                      <span className="ai-advice-team">
+                        <span className={`tt-team-badge tt-team-${a.team?.toLowerCase()}`}>{a.team}</span>
+                      </span>
+                      <span className="ai-advice-text">{a.advice}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -394,13 +535,14 @@ function ManageUsersTab({ currentUser }) {
 // ── Activity Tab ──────────────────────────────────────────────────────────────
 
 const ACTION_META = {
-  config_saved: { label: 'Targets Saved',       color: 'var(--blue)'  },
-  month_reset:  { label: 'Month Reset',          color: 'var(--red)'   },
-  guide_added:  { label: 'Guide Added',          color: 'var(--green)' },
-  guide_edited: { label: 'Guide Edited',         color: 'var(--amber)' },
-  qa_added:     { label: 'QA Review Added',      color: 'var(--green)' },
-  qa_deleted:   { label: 'QA Review Removed',    color: 'var(--red)'   },
-  qa_edited:    { label: 'QA Review Edited',     color: 'var(--amber)' },
+  config_saved:           { label: 'Targets Saved',       color: 'var(--blue)'  },
+  month_reset:            { label: 'Month Reset',          color: 'var(--red)'   },
+  guide_added:            { label: 'Guide Added',          color: 'var(--green)' },
+  guide_edited:           { label: 'Guide Edited',         color: 'var(--amber)' },
+  qa_added:               { label: 'QA Review Added',      color: 'var(--green)' },
+  qa_deleted:             { label: 'QA Review Removed',    color: 'var(--red)'   },
+  qa_edited:              { label: 'QA Review Edited',     color: 'var(--amber)' },
+  ai_analysis_generated:  { label: 'AI Analysis',          color: 'var(--blue)'  },
 }
 
 function fmtTs(ts) {
@@ -424,9 +566,10 @@ function fmtDetail(action, details, month) {
       return changes ? `${d.guide} — ${changes}` : d.guide
     }
     case 'qa_added':
-    case 'qa_edited':    return d.guide ? `${d.guide} — score ${d.score}${month ? ` (${month})` : ''}` : null
-    case 'qa_deleted':   return d.guide ? `${d.guide}${month ? ` (${month})` : ''}` : null
-    default:             return month || null
+    case 'qa_edited':              return d.guide ? `${d.guide} — score ${d.score}${month ? ` (${month})` : ''}` : null
+    case 'qa_deleted':             return d.guide ? `${d.guide}${month ? ` (${month})` : ''}` : null
+    case 'ai_analysis_generated':  return 'Cross-team'
+    default:                       return month || null
   }
 }
 
@@ -468,7 +611,7 @@ function ActivityTab() {
                     {meta.label}
                   </span>
                   <span className="activity-user">{entry.username}</span>
-                  <span className={`tt-team-badge tt-team-${entry.team}`}>{entry.team}</span>
+                  {entry.team && <span className={`tt-team-badge tt-team-${entry.team}`}>{entry.team}</span>}
                   {detail && <span className="activity-detail">{detail}</span>}
                 </div>
                 <span className="activity-ts">{fmtTs(entry.created_at)}</span>
@@ -571,7 +714,7 @@ function SetTargetsModal({ team, onClose, onSaved }) {
         {cfgLoading ? (
           <p className="subtext">Loading…</p>
         ) : draft && (
-          <div className="targets-fields">
+          <div className="targets-rows">
             {renderConfigInputs(teamDef, draft, update)}
           </div>
         )}
@@ -592,101 +735,93 @@ function SetTargetsModal({ team, onClose, onSaved }) {
 }
 
 function renderConfigInputs(teamDef, draft, update) {
-  return teamDef.metricDefs.map(def => {
+  const rows = []
+
+  for (const def of teamDef.metricDefs) {
     const { key, label, configKey, configKeyVoice, configKeyMessaging, channelSplit, tamTargets, tamTierMap } = def
 
     if (tamTargets && tamTierMap) {
-      return (
-        <div key={key} className="targets-group">
-          <div className="targets-group-label">{label}</div>
-          <div className="targets-group-fields">
-            {Object.entries(tamTierMap).map(([tierLabel, cfgKey]) => (
-              <label key={cfgKey} className="targets-field">
-                <span>{tierLabel}</span>
-                <input type="number" step="any"
-                  value={draft[configKey]?.[cfgKey] ?? ''}
-                  onChange={e => update(configKey, cfgKey, e.target.value)} />
-              </label>
-            ))}
-          </div>
-        </div>
-      )
-    }
-
-    if (tamTargets) {
-      return (
-        <div key={key} className="targets-group">
-          <div className="targets-group-label">{label}</div>
-          <div className="targets-group-fields">
-            <label className="targets-field">
-              <span>TAM 1 &amp; 2 Target</span>
+      rows.push(
+        <div key={key} className="targets-row">
+          <span className="targets-row-label">{label}</span>
+          {Object.entries(tamTierMap).map(([tierLabel, cfgKey]) => (
+            <label key={cfgKey} className="targets-inline-field">
+              <span>{tierLabel}</span>
               <input type="number" step="any"
-                value={draft[configKey]?.tam1_2Target ?? ''}
-                onChange={e => update(configKey, 'tam1_2Target', e.target.value)} />
+                value={draft[configKey]?.[cfgKey] ?? ''}
+                onChange={e => update(configKey, cfgKey, e.target.value)} />
             </label>
-            <label className="targets-field">
-              <span>TAM 3 Target</span>
-              <input type="number" step="any"
-                value={draft[configKey]?.tam3Target ?? ''}
-                onChange={e => update(configKey, 'tam3Target', e.target.value)} />
-            </label>
-          </div>
-        </div>
-      )
-    }
-
-    if (channelSplit && configKeyVoice) {
-      return (
-        <div key={key} className="targets-group">
-          <div className="targets-group-label">{label}</div>
-          {[{ lbl: 'Voice', cfgKey: configKeyVoice }, { lbl: 'Messaging', cfgKey: configKeyMessaging }].map(({ lbl, cfgKey }) => (
-            <div key={cfgKey} className="targets-channel">
-              <div className="targets-channel-label">{lbl}</div>
-              <div className="targets-group-fields">
-                {['min', 'target', 'max'].map(sub => (
-                  <label key={sub} className="targets-field">
-                    <span>{sub[0].toUpperCase() + sub.slice(1)}</span>
-                    <input type="number" step="any"
-                      value={draft[cfgKey]?.[sub] ?? ''}
-                      onChange={e => update(cfgKey, sub, e.target.value)} />
-                  </label>
-                ))}
-              </div>
-            </div>
           ))}
         </div>
       )
+      continue
+    }
+
+    if (tamTargets) {
+      rows.push(
+        <div key={key} className="targets-row">
+          <span className="targets-row-label">{label}</span>
+          <label className="targets-inline-field">
+            <span>TAM 1&amp;2</span>
+            <input type="number" step="any"
+              value={draft[configKey]?.tam1_2Target ?? ''}
+              onChange={e => update(configKey, 'tam1_2Target', e.target.value)} />
+          </label>
+          <label className="targets-inline-field">
+            <span>TAM 3</span>
+            <input type="number" step="any"
+              value={draft[configKey]?.tam3Target ?? ''}
+              onChange={e => update(configKey, 'tam3Target', e.target.value)} />
+          </label>
+        </div>
+      )
+      continue
+    }
+
+    if (channelSplit && configKeyVoice) {
+      for (const { lbl, cfgKey } of [{ lbl: 'Voice', cfgKey: configKeyVoice }, { lbl: 'Msg', cfgKey: configKeyMessaging }]) {
+        rows.push(
+          <div key={cfgKey} className="targets-row">
+            <span className="targets-row-label">{label} <span className="targets-row-sub">{lbl}</span></span>
+            {['min', 'target', 'max'].map(sub => (
+              <label key={sub} className="targets-inline-field">
+                <span>{sub[0].toUpperCase() + sub.slice(1)}</span>
+                <input type="number" step="any"
+                  value={draft[cfgKey]?.[sub] ?? ''}
+                  onChange={e => update(cfgKey, sub, e.target.value)} />
+              </label>
+            ))}
+          </div>
+        )
+      }
+      continue
     }
 
     const hasMinMax = 'min' in (teamDef.defaultConfig[configKey] || {})
-    return (
-      <div key={key} className="targets-group">
-        <div className="targets-group-label">{label}</div>
-        <div className="targets-group-fields">
-          {hasMinMax && (
-            <label className="targets-field">
-              <span>Min</span>
+    rows.push(
+      <div key={key} className="targets-row">
+        <span className="targets-row-label">{label}</span>
+        {hasMinMax
+          ? ['min', 'target', 'max'].map(sub => (
+              <label key={sub} className="targets-inline-field">
+                <span>{sub[0].toUpperCase() + sub.slice(1)}</span>
+                <input type="number" step="any"
+                  value={draft[configKey]?.[sub] ?? ''}
+                  onChange={e => update(configKey, sub, e.target.value)} />
+              </label>
+            ))
+          : (
+            <label className="targets-inline-field">
+              <span>Target</span>
               <input type="number" step="any"
-                value={draft[configKey]?.min ?? ''}
-                onChange={e => update(configKey, 'min', e.target.value)} />
+                value={draft[configKey]?.target ?? ''}
+                onChange={e => update(configKey, 'target', e.target.value)} />
             </label>
-          )}
-          <label className="targets-field">
-            <span>Target</span>
-            <input type="number" step="any"
-              value={draft[configKey]?.target ?? ''}
-              onChange={e => update(configKey, 'target', e.target.value)} />
-          </label>
-          {hasMinMax && (
-            <label className="targets-field">
-              <span>Max</span>
-              <input type="number" step="any"
-                value={draft[configKey]?.max ?? ''}
-                onChange={e => update(configKey, 'max', e.target.value)} />
-            </label>
-          )}
-        </div>
+          )
+        }
       </div>
     )
-  })
+  }
+
+  return rows
 }
