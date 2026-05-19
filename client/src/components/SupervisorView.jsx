@@ -136,6 +136,7 @@ export default function SupervisorView({ team, currentUser, activeTab: externalT
   const [addGuideChannel, setAddGuideChannel] = useState('voice')
   const [addGuideTamRole, setAddGuideTamRole] = useState(defaultTamRole)
   const [addGuideMsg, setAddGuideMsg] = useState(null)
+  const [showAddGuide, setShowAddGuide] = useState(false)
 
   // QA Reviews tab
   const [qaMonth, setQaMonth] = useState(today)
@@ -419,8 +420,10 @@ export default function SupervisorView({ team, currentUser, activeTab: externalT
       await addGuide({ name: trimmed, channel: addGuideChannel, team, tamRole: addGuideTamRole })
       logActivity({ username: currentUser, team, action: 'guide_added', details: { guide: trimmed } })
       setAddGuideName('')
-      setAddGuideMsg({ ok: true, text: `${trimmed} added.` })
-      setTimeout(() => setAddGuideMsg(null), 3000)
+      setAddGuideChannel('voice')
+      setAddGuideTamRole(defaultTamRole)
+      setAddGuideMsg(null)
+      setShowAddGuide(false)
       await loadTeamGuides()
     } catch (err) { setAddGuideMsg({ ok: false, text: err.message }) }
   }
@@ -837,75 +840,90 @@ export default function SupervisorView({ team, currentUser, activeTab: externalT
               Reviews are tracked here but are not included in MIS scores for this team.
             </div>
           )}
-          <div className="history-controls">
-            <label className="history-month-select">
-              <span>Month</span>
-              <select value={qaMonth} onChange={e => setQaMonth(e.target.value)}>
-                {allInputMonths.map(m => <option key={m} value={m}>{fmtMonth(m)}</option>)}
-              </select>
-            </label>
-          </div>
 
-          <div className="qa-add-form">
-            <h3>Add Review</h3>
-            <div className="qa-add-row">
-              <select value={qaGuideName} onChange={e => setQaGuideName(e.target.value)}>
-                <option value="">— Select guide —</option>
-                {qaGuideNames.map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-              <input type="number" min="0" max="100" placeholder="Score (0–100)" value={qaScore} onChange={e => setQaScore(e.target.value)} />
-              <input type="date" value={qaDate} onChange={e => setQaDate(e.target.value)} />
-              <button className="btn-primary" onClick={handleAddQaReview}>Add</button>
-            </div>
-            {qaAddMsg && <p className="qa-msg-error">{qaAddMsg}</p>}
+          <div className="qa-controls-bar">
+            <select className="input-month-select" value={qaMonth} onChange={e => setQaMonth(e.target.value)}>
+              {allInputMonths.map(m => <option key={m} value={m}>{fmtMonth(m)}</option>)}
+            </select>
+            <div className="input-controls-divider" />
+            <select value={qaGuideName} onChange={e => setQaGuideName(e.target.value)}>
+              <option value="">— Guide —</option>
+              {qaGuideNames.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+            <input type="number" min="0" max="100" placeholder="Score (0–100)" value={qaScore} onChange={e => setQaScore(e.target.value)} style={{ width: '120px' }} />
+            <input type="date" value={qaDate} onChange={e => setQaDate(e.target.value)} />
+            <button className="btn-primary" onClick={handleAddQaReview}>Add Review</button>
+            {qaAddMsg && <span className="qa-msg-error">{qaAddMsg}</span>}
           </div>
 
           {qaLoading ? <p className="subtext">Loading…</p>
             : qaError ? <p className="error-msg">{qaError}</p>
             : groupedQaReviews.length === 0 ? <p className="subtext">No active guides on this team.</p>
             : (
-              <div className="qa-guide-list">
-                {groupedQaReviews.map(({ name, reviews, avg }) => (
-                  <div key={name} className="qa-guide-card">
-                    <div className="qa-guide-header">
-                      <span className="qa-guide-name">{name}</span>
-                      <span className={`qa-count-badge${reviews.length < 4 ? ' qa-warn' : ''}`}>
-                        {reviews.length} review{reviews.length !== 1 ? 's' : ''}
-                        {reviews.length < 4 && ' — min 4 required'}
-                      </span>
-                      <span className="qa-avg">{avg !== null ? `Avg: ${avg.toFixed(2)}` : ''}</span>
-                    </div>
-                    {reviews.length > 0 && <table className="qa-reviews-table">
-                      <thead><tr><th>Date</th><th>Score</th><th></th></tr></thead>
-                      <tbody>
-                        {reviews.map(r => (
-                          <tr key={r.id}>
-                            {editingReviewId === r.id ? (
-                              <>
-                                <td><input type="date" className="qa-edit-input" value={editReviewDate} onChange={e => setEditReviewDate(e.target.value)} /></td>
-                                <td><input type="number" className="qa-edit-input" min="0" max="100" step="0.01" value={editReviewScore} onChange={e => setEditReviewScore(e.target.value)} /></td>
-                                <td className="qa-row-actions">
-                                  <button className="btn-sm btn-primary" onClick={() => handleSaveEditReview(r)}>Save</button>
-                                  <button className="btn-sm btn-ghost" onClick={() => setEditingReviewId(null)}>Cancel</button>
-                                </td>
-                              </>
-                            ) : (
-                              <>
-                                <td>{r.review_date}</td>
-                                <td>{Number(r.score).toFixed(2)}</td>
-                                <td className="qa-row-actions">
-                                  <button className="btn-sm btn-ghost" onClick={() => { setEditingReviewId(r.id); setEditReviewScore(String(r.score)); setEditReviewDate(r.review_date) }}>Edit</button>
-                                  <button className="btn-sm btn-danger" onClick={() => handleDeleteQaReview(r)}>Remove</button>
-                                </td>
-                              </>
-                            )}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>}
-                  </div>
-                ))}
-              </div>
+              <table className="qa-flat-table">
+                <thead>
+                  <tr>
+                    <th>Guide</th>
+                    <th>Reviews</th>
+                    <th>Avg</th>
+                    <th>Date</th>
+                    <th>Score</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groupedQaReviews.map(({ name, reviews, avg }) => (
+                    reviews.length === 0 ? (
+                      <tr key={name} className="qa-guide-row">
+                        <td className="qa-flat-name">{name}</td>
+                        <td><span className="qa-count-badge qa-warn">0 — min 4 required</span></td>
+                        <td colSpan={4} />
+                      </tr>
+                    ) : (
+                      reviews.map((r, ri) => (
+                        <tr key={r.id} className={ri === 0 ? 'qa-guide-row' : 'qa-review-row'}>
+                          {ri === 0 ? (
+                            <td className="qa-flat-name" rowSpan={reviews.length}>
+                              <span>{name}</span>
+                            </td>
+                          ) : null}
+                          {ri === 0 ? (
+                            <td className="qa-flat-count" rowSpan={reviews.length}>
+                              <span className={`qa-count-badge${reviews.length < 4 ? ' qa-warn' : ''}`}>
+                                {reviews.length}{reviews.length < 4 ? ' ⚠' : ''}
+                              </span>
+                            </td>
+                          ) : null}
+                          {ri === 0 ? (
+                            <td className="qa-flat-avg" rowSpan={reviews.length}>
+                              {avg !== null ? avg.toFixed(2) : '—'}
+                            </td>
+                          ) : null}
+                          {editingReviewId === r.id ? (
+                            <>
+                              <td><input type="date" className="qa-edit-input" value={editReviewDate} onChange={e => setEditReviewDate(e.target.value)} /></td>
+                              <td><input type="number" className="qa-edit-input" min="0" max="100" step="0.01" value={editReviewScore} onChange={e => setEditReviewScore(e.target.value)} /></td>
+                              <td className="qa-row-actions">
+                                <button className="btn-sm btn-primary" onClick={() => handleSaveEditReview(r)}>Save</button>
+                                <button className="btn-sm btn-ghost" onClick={() => setEditingReviewId(null)}>Cancel</button>
+                              </td>
+                            </>
+                          ) : (
+                            <>
+                              <td className="qa-flat-date">{r.review_date}</td>
+                              <td className="qa-flat-score">{Number(r.score).toFixed(2)}</td>
+                              <td className="qa-row-actions">
+                                <button className="btn-sm btn-ghost" onClick={() => { setEditingReviewId(r.id); setEditReviewScore(String(r.score)); setEditReviewDate(r.review_date) }}>Edit</button>
+                                <button className="btn-sm btn-danger" onClick={() => handleDeleteQaReview(r)}>✕</button>
+                              </td>
+                            </>
+                          )}
+                        </tr>
+                      ))
+                    )
+                  ))}
+                </tbody>
+              </table>
             )}
         </div>
       )}
@@ -1199,28 +1217,41 @@ export default function SupervisorView({ team, currentUser, activeTab: externalT
                 </table>
               </div>
 
-              <div className="manage-team-add">
-                <h4>Add Guide</h4>
-                <form onSubmit={handleAddGuide} className="manage-add-form">
-                  <input type="text" placeholder="Guide name" value={addGuideName} onChange={e => setAddGuideName(e.target.value)} required />
-                  {teamDef.hasChannel && (
-                    <select value={addGuideChannel} onChange={e => setAddGuideChannel(e.target.value)}>
-                      <option value="voice">Voice</option>
-                      <option value="messaging">Messaging</option>
-                    </select>
-                  )}
-                  {hasTamRoles && (
-                    <select value={addGuideTamRole} onChange={e => setAddGuideTamRole(e.target.value)}>
-                      {tamRoleOptions.map(r => <option key={r} value={r}>{r}</option>)}
-                    </select>
-                  )}
-                  <button type="submit" className="btn-primary">Add Guide</button>
-                  {addGuideMsg && (
-                    <span className={addGuideMsg.ok ? 'close-month-msg' : 'close-month-msg error-msg'}>{addGuideMsg.text}</span>
-                  )}
-                </form>
-                <p className="subtext" style={{ marginTop: '0.5rem' }}>New guides are created with the default password "changeme".</p>
+              <div style={{ marginTop: '0.75rem' }}>
+                <button className="btn-primary" onClick={() => { setShowAddGuide(true); setAddGuideMsg(null) }}>+ Add Guide</button>
               </div>
+
+              {showAddGuide && (
+                <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) { setShowAddGuide(false); setAddGuideMsg(null) } }}>
+                  <div className="modal-card" style={{ maxWidth: '420px' }}>
+                    <div className="modal-header">
+                      <div>
+                        <h2>Add Guide</h2>
+                        <p>New guides are created with the default password "changeme".</p>
+                      </div>
+                      <button className="modal-close btn-ghost" onClick={() => { setShowAddGuide(false); setAddGuideMsg(null) }}>✕</button>
+                    </div>
+                    <form onSubmit={handleAddGuide} className="modal-form">
+                      <input type="text" placeholder="Guide name" value={addGuideName} onChange={e => setAddGuideName(e.target.value)} required />
+                      {teamDef.hasChannel && (
+                        <select value={addGuideChannel} onChange={e => setAddGuideChannel(e.target.value)}>
+                          <option value="voice">Voice</option>
+                          <option value="messaging">Messaging</option>
+                        </select>
+                      )}
+                      {hasTamRoles && (
+                        <select value={addGuideTamRole} onChange={e => setAddGuideTamRole(e.target.value)}>
+                          {tamRoleOptions.map(r => <option key={r} value={r}>{r}</option>)}
+                        </select>
+                      )}
+                      {addGuideMsg && (
+                        <span className={addGuideMsg.ok ? 'close-month-msg' : 'close-month-msg error-msg'}>{addGuideMsg.text}</span>
+                      )}
+                      <button type="submit" className="btn-primary">Add Guide</button>
+                    </form>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>

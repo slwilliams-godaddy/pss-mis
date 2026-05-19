@@ -290,7 +290,7 @@ main { flex: 1; padding: 2rem; max-width: 960px; margin: 0 auto; width: 100%; }
 main.main--no-top-pad { padding-top: 0; }
 
 /* VIEW */
-.view-container { display: flex; flex-direction: column; gap: 1.5rem; }
+.view-container { display: flex; flex-direction: column; gap: 1.5rem; padding-top: 1rem; }
 .view-container h2 { font-size: 1.5rem; }
 .subtext { color: var(--text-muted); font-size: 0.9rem; }
 
@@ -916,7 +916,7 @@ input:focus { outline: none; border-color: var(--blue); }
 .hist-avg-pts { font-size: 0.8rem; font-weight: 500; }
 
 /* GUIDE TREND */
-.trend-tab { display: flex; flex-direction: column; gap: 1.5rem; }
+.trend-tab { display: flex; flex-direction: column; gap: 1.5rem; padding-top: 1rem; }
 
 .trend-guide-select { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 .trend-label { font-size: 0.88rem; font-weight: 500; color: var(--text-muted); }
@@ -1329,26 +1329,22 @@ input:focus { outline: none; border-color: var(--blue); }
 }
 
 /* ── QA REVIEWS TAB ── */
-.qa-tab { display: flex; flex-direction: column; gap: 1.5rem; }
-.qa-add-form { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; }
-.qa-add-form h3 { margin: 0 0 .75rem; font-size: .9rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
-.qa-add-row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
-.qa-add-row select, .qa-add-row input { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: .4rem .6rem; font-size: .85rem; transition: border-color 0.15s; }
-.qa-add-row select:focus, .qa-add-row input:focus { outline: none; border-color: var(--blue); }
-.qa-add-row input[type="number"] { width: 120px; }
+.qa-tab { display: flex; flex-direction: column; gap: 1rem; }
+.qa-controls-bar { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.qa-controls-bar select, .qa-controls-bar input { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: .35rem .55rem; font-size: .85rem; transition: border-color 0.15s; }
+.qa-controls-bar select:focus, .qa-controls-bar input:focus { outline: none; border-color: var(--blue); }
 .qa-mismatch-hint { display: block; font-size: .7rem; color: var(--amber); margin-top: .15rem; }
-.qa-msg-error { color: var(--red); font-size: .8rem; margin: .5rem 0 0; }
-.qa-guide-list { display: flex; flex-direction: column; gap: 0.75rem; }
-.qa-guide-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-.qa-guide-header { display: flex; align-items: center; gap: .75rem; padding: .6rem 1rem; background: var(--surface2); border-bottom: 1px solid var(--border); }
-.qa-guide-name { font-weight: 600; font-size: .9rem; flex: 1; }
-.qa-count-badge { font-size: .75rem; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: .2rem .55rem; color: var(--text-muted); }
+.qa-msg-error { color: var(--red); font-size: .8rem; }
+.qa-count-badge { font-size: .75rem; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: .15rem .5rem; color: var(--text-muted); white-space: nowrap; }
 .qa-count-badge.qa-warn { border-color: var(--amber); color: var(--amber); }
-.qa-avg { font-size: .85rem; color: var(--text-muted); min-width: 80px; text-align: right; }
-.qa-reviews-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
-.qa-reviews-table th, .qa-reviews-table td { padding: .4rem 1rem; border-bottom: 1px solid var(--border); text-align: left; }
-.qa-reviews-table tbody tr:last-child td { border-bottom: none; }
-.qa-reviews-table th { color: var(--text-muted); font-weight: 500; font-size: .75rem; }
+.qa-flat-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.qa-flat-table th { color: var(--text-muted); font-weight: 500; font-size: .78rem; text-align: left; padding: .35rem .75rem; border-bottom: 1px solid var(--border); }
+.qa-flat-table td { padding: .3rem .75rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.qa-flat-table .qa-guide-row td { background: var(--surface2); font-weight: 600; border-top: 1px solid var(--border); }
+.qa-flat-table .qa-review-row td { background: transparent; }
+.qa-flat-table tbody tr:last-child td { border-bottom: none; }
+.qa-flat-name { font-weight: 600; }
+.qa-flat-avg { color: var(--text-muted); }
 .qa-row-actions { display: flex; gap: .35rem; align-items: center; }
 .qa-edit-input { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); padding: .25rem .4rem; font-size: .82rem; width: 100%; }
 .qa-edit-input:focus { outline: none; border-color: var(--blue); }
@@ -1406,6 +1402,7 @@ input:focus { outline: none; border-color: var(--blue); }
   display: flex; flex-direction: column; gap: 0.75rem;
 }
 .modal-form select,
+.modal-form input[type="text"],
 .modal-form input[type="password"] {
   background: var(--bg);
   border: 1px solid var(--border);
@@ -1416,6 +1413,7 @@ input:focus { outline: none; border-color: var(--blue); }
   width: 100%;
 }
 .modal-form select:focus,
+.modal-form input[type="text"]:focus,
 .modal-form input[type="password"]:focus { outline: none; border-color: var(--blue); }
 .modal-form .btn-primary { align-self: stretch; text-align: center; margin-top: .25rem; }
 
