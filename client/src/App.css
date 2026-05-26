@@ -669,12 +669,13 @@ input:focus { outline: none; border-color: var(--blue); }
 
 /* BULK TABLE CELL LAYOUT */
 .perday-cell { display: flex; align-items: center; gap: 3px; }
-.weighted-cell { display: flex; flex-direction: column; gap: 3px; min-width: 100px; }
-.weighted-cell input { width: 100%; }
-.weighted-computed { font-size: 0.75rem; color: var(--text-muted); text-align: right; }
+.weighted-cell { display: flex; flex-direction: row; gap: 4px; align-items: center; min-width: 110px; }
+.weighted-cell input { width: 48px; min-width: 0; }
+.weighted-computed { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
 
 /* GUIDE CALCULATOR WEIGHTED FIELD */
 .weighted-field-group { display: flex; flex-direction: column; gap: 0.4rem; }
+.form-grid .weighted-field-group { flex: 1; min-width: 0; }
 .weighted-inputs { display: flex; gap: 0.5rem; }
 .weighted-sub { display: flex; flex-direction: column; gap: 0.25rem; flex: 1; }
 .weighted-sub-label { font-size: 0.75rem; color: var(--text-muted); }

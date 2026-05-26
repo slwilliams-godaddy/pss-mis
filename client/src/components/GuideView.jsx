@@ -509,12 +509,11 @@ export default function GuideView({ team, guideUser }) {
                       <div className="weighted-inputs">
                         {def.weightedComponents.map(comp => (
                           <label key={comp.key} className="weighted-sub">
-                            <span className="weighted-sub-label">{comp.label} Closures</span>
                             <input
                               type="number"
                               value={fields[comp.key]}
                               onChange={e => { setFields(f => ({ ...f, [comp.key]: e.target.value })); clearResult() }}
-                              placeholder={comp.label}
+                              placeholder={`${comp.label} Closures`}
                               step="1"
                               min="0"
                               required
