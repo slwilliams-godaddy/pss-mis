@@ -10,16 +10,20 @@ const SCORE_RAILS = {
 // configByKey: { [def.configKey]: { target: number } }
 export function calculateMISGeneric(actuals, configByKey, metricDefs) {
   let total = 0
+  const autoFailMetrics = []
   const result = {}
   for (const def of metricDefs) {
     const target = configByKey[def.configKey]?.target
     if (!target) { result[def.key] = 0; continue }
     const raw = ((actuals[def.key] / target) - 1) * 100 * def.weight
+    if (raw < -25) autoFailMetrics.push(def.key)
     result[def.key] = Math.round(Math.min(def.rail.max, Math.max(def.rail.min, raw)) * 100) / 100
     total += result[def.key]
   }
   result.total = Math.round(total * 100) / 100
-  result.passing = total > 0
+  result.autoFail = autoFailMetrics.length > 0
+  result.autoFailMetrics = autoFailMetrics
+  result.passing = total >= 0 && !result.autoFail
   return result
 }
 

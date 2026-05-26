@@ -44,7 +44,8 @@ function Sparkline({ values, color, width = 130, height = 40 }) {
 }
 
 function fmtActual(def, v) {
-  if (def.entryMode === 'perday') return `${def.prefix || ''}${v.toFixed(2)}${def.suffix || ''}`
+  if (def.entryMode === 'perday' || def.entryMode === 'weighted') return `${def.prefix || ''}${v.toFixed(2)}${def.suffix || ''}`
+  if (def.entryMode === 'count') return `${Math.round(v)}`
   return `${def.prefix || ''}${v.toFixed(1)}${def.suffix || ''}`
 }
 
@@ -67,8 +68,12 @@ export default function SupervisorView({ team, currentUser, activeTab: externalT
     const g = { name: '', email: '', tam_role: defaultTamRole, days: '' }
     if (teamDef.hasChannel) g.channel = 'voice'
     for (const def of metricDefs) {
-      g[def.key] = ''
-      if (def.entryMode === 'perday') g[`${def.key}Mode`] = 'perday'
+      if (def.entryMode === 'weighted') {
+        for (const comp of def.weightedComponents) g[comp.key] = ''
+      } else {
+        g[def.key] = ''
+        if (def.entryMode === 'perday') g[`${def.key}Mode`] = 'perday'
+      }
     }
     return g
   }, [team])
@@ -172,7 +177,16 @@ export default function SupervisorView({ team, currentUser, activeTab: externalT
       const days = parseFloat(g.days)
       const actuals = {}
       for (const def of metricDefs) {
-        if (def.entryMode === 'perday') {
+        if (def.entryMode === 'weighted') {
+          let weighted = 0
+          for (const comp of def.weightedComponents) {
+            const v = parseFloat(g[comp.key])
+            if (isNaN(v)) return null
+            weighted += v * comp.multiplier
+          }
+          if (isNaN(days) || days <= 0) return null
+          actuals[def.key] = weighted / days
+        } else if (def.entryMode === 'perday') {
           const val = g[`${def.key}Mode`] === 'total' && !isNaN(days) && days > 0
             ? parseFloat(g[def.key]) / days
             : parseFloat(g[def.key])
@@ -793,6 +807,35 @@ export default function SupervisorView({ team, currentUser, activeTab: externalT
                               </td>
                             )}
                             {metricDefs.map(def => {
+                              if (def.entryMode === 'weighted') {
+                                let weighted = 0
+                                let allFilled = true
+                                for (const comp of def.weightedComponents) {
+                                  const v = parseFloat(g[comp.key])
+                                  if (isNaN(v)) { allFilled = false; break }
+                                  weighted += v * comp.multiplier
+                                }
+                                const ccpd = allFilled && days > 0 ? (weighted / days).toFixed(2) : null
+                                return (
+                                  <td key={def.key}>
+                                    <div className="weighted-cell">
+                                      {def.weightedComponents.map(comp => (
+                                        <input
+                                          key={comp.key}
+                                          type="number"
+                                          value={g[comp.key]}
+                                          onChange={e => handleGuideChange(i, comp.key, e.target.value)}
+                                          placeholder={comp.label}
+                                          step="1"
+                                          min="0"
+                                          title={comp.label}
+                                        />
+                                      ))}
+                                      {ccpd && <span className="weighted-computed" title="Computed CCPD">{ccpd}/day</span>}
+                                    </div>
+                                  </td>
+                                )
+                              }
                               if (def.entryMode === 'perday') {
                                 const modeKey = `${def.key}Mode`
                                 const totalVal = parseFloat(g[def.key])
@@ -804,6 +847,13 @@ export default function SupervisorView({ team, currentUser, activeTab: externalT
                                       <button type="button" className={`mini-toggle ${g[modeKey] === 'total' ? 'active' : ''}`} onClick={() => toggleMetricMode(i, def.key)}>total</button>
                                       <input type="number" value={g[def.key]} onChange={e => handleGuideChange(i, def.key, e.target.value)} placeholder={g[modeKey] === 'total' ? 'Total' : 'Per day'} step="0.01" title={computed !== null ? `≈ ${def.prefix}${computed.toFixed(2)}${def.suffix} per day` : undefined} />
                                     </div>
+                                  </td>
+                                )
+                              }
+                              if (def.entryMode === 'count') {
+                                return (
+                                  <td key={def.key}>
+                                    <input type="number" value={g[def.key]} onChange={e => handleGuideChange(i, def.key, e.target.value)} placeholder="Count" step="1" min="0" />
                                   </td>
                                 )
                               }

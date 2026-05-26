@@ -293,8 +293,14 @@ function rowToGuide(row, team) {
   }
   if (hasChannel) guide.channel = row.channel || 'voice'
   for (const def of metricDefs) {
-    guide[def.key] = row[def.key] != null ? String(row[def.key]) : ''
-    if (def.entryMode === 'perday') guide[`${def.key}Mode`] = 'perday'
+    if (def.entryMode === 'weighted') {
+      for (const comp of def.weightedComponents) {
+        guide[comp.key] = row[comp.key] != null ? String(row[comp.key]) : ''
+      }
+    } else {
+      guide[def.key] = row[def.key] != null ? String(row[def.key]) : ''
+      if (def.entryMode === 'perday') guide[`${def.key}Mode`] = 'perday'
+    }
   }
   return guide
 }
@@ -313,7 +319,17 @@ function guideToRow(guide, month, team) {
     published:        true,
   }
   for (const def of metricDefs) {
-    if (def.entryMode === 'perday') {
+    if (def.entryMode === 'weighted') {
+      let weighted = 0
+      let hasAll = true
+      for (const comp of def.weightedComponents) {
+        const v = parseFloat(guide[comp.key])
+        if (isNaN(v)) { hasAll = false; break }
+        row[comp.key] = v
+        weighted += v * comp.multiplier
+      }
+      row[def.key] = hasAll && !isNaN(days) && days > 0 ? weighted / days : null
+    } else if (def.entryMode === 'perday') {
       const val = guide[`${def.key}Mode`] === 'total' && !isNaN(days) && days > 0
         ? parseFloat(guide[def.key]) / days
         : parseFloat(guide[def.key])

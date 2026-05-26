@@ -28,7 +28,13 @@ function computeGuidance(actuals, qaCount, qaRemaining, W, R, resolvedConfig, me
       ? cfg.target * (1 + def.rail.max / (100 * def.weight))
       : null
     const maxTarget = cfg.max ?? impliedMax
-    if (def.isQuality && !teamDef.qaNotInMis) {
+    if (def.entryMode === 'count') {
+      toTarget[def.key] = cfg.target - cur
+      maximize[def.key] = maxTarget != null ? maxTarget - cur : null
+    } else if (def.entryMode === 'weighted') {
+      toTarget[def.key] = neededRate(cfg.target, cur)
+      maximize[def.key] = maxTarget != null ? neededRate(maxTarget, cur) : null
+    } else if (def.isQuality && !teamDef.qaNotInMis) {
       toTarget[def.key] = neededFutureQaAvg(cfg.target, cur, qaCount, qaRemaining)
       maximize[def.key] = maxTarget != null ? neededFutureQaAvg(maxTarget, cur, qaCount, qaRemaining) : null
     } else {
@@ -100,6 +106,26 @@ function QaGuidanceRow({ label = 'QA', currentAvg, qaCount, qaRemaining, needed,
   )
 }
 
+function CountGuidanceRow({ label, current, needed, aspirational = false }) {
+  let cls, msg
+  const remaining = Math.ceil(needed)
+  if (needed <= 0) {
+    cls = 'good'
+    msg = aspirational
+      ? `You've hit the ceiling with ${Math.round(current)} item${Math.round(current) !== 1 ? 's' : ''}.`
+      : `You've already reached or exceeded the target with ${Math.round(current)} item${Math.round(current) !== 1 ? 's' : ''}.`
+  } else {
+    cls = aspirational ? 'warn' : 'warn'
+    msg = `Need ${remaining} more item${remaining !== 1 ? 's' : ''} by end of month (currently ${Math.round(current)}).`
+  }
+  return (
+    <div className={`guidance-row guidance-${cls}`}>
+      <span className="guidance-label">{label}</span>
+      <span className="guidance-text">{msg}</span>
+    </div>
+  )
+}
+
 // ── History panel ─────────────────────────────────────────────────────────────
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
@@ -135,7 +161,8 @@ function Sparkline({ values, color, width = 130, height = 40 }) {
 
 function fmtActual(def, v) {
   if (def.entryMode === 'percent') return `${v.toFixed(1)}${def.suffix}`
-  return `${def.prefix || ''}${v.toFixed(2)}${def.suffix}`
+  if (def.entryMode === 'count') return `${Math.round(v)}`
+  return `${def.prefix || ''}${v.toFixed(2)}${def.suffix}`  // perday + weighted both show X.XX/day
 }
 
 function HistoryPanel({ guideUser, team }) {
@@ -258,6 +285,10 @@ function HistoryPanel({ guideUser, team }) {
 export default function GuideView({ team, guideUser }) {
   const teamDef = TEAM_DEFS[team] || TEAM_DEFS.pss
   const { metricDefs } = teamDef
+  const tamRoleOptions = (() => {
+    const tierMap = metricDefs.find(def => def.tamTargets)?.tamTierMap
+    return tierMap ? Object.keys(tierMap) : []
+  })()
 
   const [activeTab, setActiveTab] = useState('calculator')
 
@@ -280,14 +311,23 @@ export default function GuideView({ team, guideUser }) {
     getConfigForMonth(selectedMonth, team).then(cfg => { if (cfg) setActiveConfig(cfg) }).catch(() => {})
   }, [selectedMonth, config, team])
 
-  // Per-metric field state, keyed by def.key
-  const initFields = (defs) => Object.fromEntries(defs.map(d => [d.key, '']))
+  const initFields = (defs) => {
+    const f = {}
+    for (const d of defs) {
+      if (d.entryMode === 'weighted') {
+        for (const comp of d.weightedComponents) f[comp.key] = ''
+      } else {
+        f[d.key] = ''
+      }
+    }
+    return f
+  }
   const initModes  = (defs) => Object.fromEntries(defs.filter(d => d.entryMode === 'perday').map(d => [d.key, 'perday']))
 
   const [fields, setFields]         = useState(() => initFields(metricDefs))
   const [fieldModes, setFieldModes] = useState(() => initModes(metricDefs))
   const [channel, setChannel]       = useState('voice')
-  const [tamRole, setTamRole]       = useState('TAM 1')
+  const [tamRole, setTamRole]       = useState(() => tamRoleOptions[0] ?? 'TAM 1')
   const [daysWorked, setDaysWorked]         = useState('')
   const [daysRemaining, setDaysRemaining]   = useState('')
   const [qaCount, setQaCount]               = useState('')
@@ -322,11 +362,21 @@ export default function GuideView({ team, guideUser }) {
 
     const actuals = {}
     for (const def of metricDefs) {
-      const raw = def.entryMode === 'perday' && fieldModes[def.key] === 'total'
-        ? parseFloat(fields[def.key]) / W
-        : parseFloat(fields[def.key])
-      if (isNaN(raw)) return
-      actuals[def.key] = raw
+      if (def.entryMode === 'weighted') {
+        let weighted = 0
+        for (const comp of def.weightedComponents) {
+          const v = parseFloat(fields[comp.key])
+          if (isNaN(v)) return
+          weighted += v * comp.multiplier
+        }
+        actuals[def.key] = weighted / W
+      } else {
+        const raw = def.entryMode === 'perday' && fieldModes[def.key] === 'total'
+          ? parseFloat(fields[def.key]) / W
+          : parseFloat(fields[def.key])
+        if (isNaN(raw)) return
+        actuals[def.key] = raw
+      }
     }
 
     const qaCt  = parseInt(qaCount) || 0
@@ -343,7 +393,7 @@ export default function GuideView({ team, guideUser }) {
   const hasMaximize = result && guidance?.maximize
     && Object.values(guidance.maximize).some(v => v !== null)
 
-  const guidanceFmt = (def) => def.entryMode === 'perday'
+  const guidanceFmt = (def) => (def.entryMode === 'perday' || def.entryMode === 'weighted')
     ? (v) => `${def.prefix || ''}${v.toFixed(2)}${def.suffix}`
     : (v) => `${v.toFixed(1)}${def.suffix}`
 
@@ -353,6 +403,7 @@ export default function GuideView({ team, guideUser }) {
     if (def.entryMode === 'perday' && mode === 'total' && W > 0) {
       return `${def.prefix || ''}${(cfg.target * W).toFixed(0)} by now`
     }
+    if (def.entryMode === 'weighted') return `${cfg.target}${def.suffix}`
     return `${def.prefix || ''}${cfg.target}${def.suffix}`
   }
 
@@ -400,14 +451,12 @@ export default function GuideView({ team, guideUser }) {
               </div>
             )}
 
-            {/* TAM Role selector — Escalations only */}
-            {team === 'escalations' && (
+            {/* TAM Role selector */}
+            {tamRoleOptions.length > 0 && (
               <div className="guide-channel-row">
-                <span className="guide-channel-label">TAM Role</span>
+                <span className="guide-channel-label">Level</span>
                 <select value={tamRole} onChange={e => { setTamRole(e.target.value); clearResult() }}>
-                  <option value="TAM 1">TAM 1</option>
-                  <option value="TAM 2">TAM 2</option>
-                  <option value="TAM 3">TAM 3</option>
+                  {tamRoleOptions.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
               </div>
             )}
@@ -444,6 +493,65 @@ export default function GuideView({ team, guideUser }) {
                 const isTotal = mode === 'total'
                 const computed = isTotal && fields[def.key] && W > 0
                   ? (parseFloat(fields[def.key]) / W).toFixed(2) : null
+                if (def.entryMode === 'weighted') {
+                  let weighted = 0
+                  let allFilled = true
+                  for (const comp of def.weightedComponents) {
+                    const v = parseFloat(fields[comp.key])
+                    if (isNaN(v)) { allFilled = false; break }
+                    weighted += v * comp.multiplier
+                  }
+                  const ccpd = allFilled && W > 0 ? (weighted / W).toFixed(2) : null
+                  const cfg = resolvedConfig[def.configKey]
+                  return (
+                    <div key={def.key} className="weighted-field-group">
+                      <div className="field-header"><span>{def.fullName}</span></div>
+                      <div className="weighted-inputs">
+                        {def.weightedComponents.map(comp => (
+                          <label key={comp.key} className="weighted-sub">
+                            <span className="weighted-sub-label">{comp.label} Closures</span>
+                            <input
+                              type="number"
+                              value={fields[comp.key]}
+                              onChange={e => { setFields(f => ({ ...f, [comp.key]: e.target.value })); clearResult() }}
+                              placeholder={comp.label}
+                              step="1"
+                              min="0"
+                              required
+                            />
+                          </label>
+                        ))}
+                      </div>
+                      {ccpd && (
+                        <span className="computed-hint">
+                          = {ccpd}/day
+                          {cfg?.target ? ` (target: ${cfg.target}/day)` : ''}
+                        </span>
+                      )}
+                      {!ccpd && cfg?.target && (
+                        <span className="target-hint">Target: {cfg.target}/day</span>
+                      )}
+                    </div>
+                  )
+                }
+                if (def.entryMode === 'count') {
+                  return (
+                    <label key={def.key}>
+                      <div className="field-header"><span>{def.fullName}</span></div>
+                      <input
+                        type="number"
+                        name={def.key}
+                        value={fields[def.key]}
+                        onChange={e => { setFields(f => ({ ...f, [def.key]: e.target.value })); clearResult() }}
+                        placeholder={def.label}
+                        step="1"
+                        min="0"
+                        required
+                      />
+                      <span className="target-hint">Target: {targetHint(def, mode)}/month</span>
+                    </label>
+                  )
+                }
                 return (
                   <label key={def.key}>
                     <div className="field-header spaced">
@@ -529,6 +637,14 @@ export default function GuideView({ team, guideUser }) {
                 </div>
                 <div className="total-score">{result.total > 0 ? `+${result.total}` : result.total}</div>
                 <div className="total-label">Total MIS Score</div>
+                {result.autoFail && (
+                  <div className="autofail-note">
+                    Auto-fail — {result.autoFailMetrics.map(k => {
+                      const def = metricDefs.find(d => d.key === k)
+                      return def?.label ?? k
+                    }).join(', ')} scored worse than −25 before capping
+                  </div>
+                )}
                 <ScoreGauge score={result.total} />
 
                 <div className="metric-breakdown">
@@ -555,6 +671,16 @@ export default function GuideView({ team, guideUser }) {
                       </p>
                       <div className="guidance-rows">
                         {metricDefs.map(def => {
+                          if (def.entryMode === 'count') {
+                            return (
+                              <CountGuidanceRow
+                                key={def.key}
+                                label={def.label}
+                                current={snapshot.actuals[def.key]}
+                                needed={guidance.toTarget[def.key]}
+                              />
+                            )
+                          }
                           if (def.isQuality && !teamDef.qaNotInMis) {
                             return (
                               <QaGuidanceRow
@@ -598,6 +724,17 @@ export default function GuideView({ team, guideUser }) {
                         {metricDefs.map(def => {
                           const maxVal = guidance.maximize[def.key]
                           if (maxVal === null || maxVal === undefined) return null
+                          if (def.entryMode === 'count') {
+                            return (
+                              <CountGuidanceRow
+                                key={def.key}
+                                label={def.label}
+                                current={snapshot.actuals[def.key]}
+                                needed={maxVal}
+                                aspirational
+                              />
+                            )
+                          }
                           if (def.isQuality && !teamDef.qaNotInMis) {
                             return (
                               <QaGuidanceRow

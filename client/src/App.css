@@ -488,6 +488,7 @@ input:focus { outline: none; border-color: var(--blue); }
 
 .total-score { font-size: 3.5rem; font-weight: 700; line-height: 1; }
 .total-label { color: var(--text-muted); font-size: 0.9rem; margin-top: -0.5rem; }
+.autofail-note { font-size: 0.8rem; color: var(--red); background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 0.4rem; padding: 0.35rem 0.6rem; margin-top: 0.4rem; }
 
 /* GAUGE */
 .gauge-wrap { display: flex; flex-direction: column; gap: 0.35rem; }
@@ -668,6 +669,15 @@ input:focus { outline: none; border-color: var(--blue); }
 
 /* BULK TABLE CELL LAYOUT */
 .perday-cell { display: flex; align-items: center; gap: 3px; }
+.weighted-cell { display: flex; flex-direction: column; gap: 3px; min-width: 100px; }
+.weighted-cell input { width: 100%; }
+.weighted-computed { font-size: 0.75rem; color: var(--text-muted); text-align: right; }
+
+/* GUIDE CALCULATOR WEIGHTED FIELD */
+.weighted-field-group { display: flex; flex-direction: column; gap: 0.4rem; }
+.weighted-inputs { display: flex; gap: 0.5rem; }
+.weighted-sub { display: flex; flex-direction: column; gap: 0.25rem; flex: 1; }
+.weighted-sub-label { font-size: 0.75rem; color: var(--text-muted); }
 .mini-toggle {
   background: transparent;
   border: 1px solid var(--border);

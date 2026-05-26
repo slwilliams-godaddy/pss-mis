@@ -80,11 +80,16 @@ export const TEAM_DEFS = {
     fullName: 'Escalations',
     metricDefs: [
       {
-        key: 'case_closures_day', label: 'Case Closures/Day', overviewLabel: 'CCD', fullName: 'Case Closures Per Day',
+        key: 'case_closures_day', label: 'CCPD', overviewLabel: 'CCPD', fullName: 'Complexity-Weighted Case Closures Per Day',
         prefix: '', suffix: '/day', weight: 1.0, rail: { min: -25, max: 25 },
-        entryMode: 'perday', channelSplit: false,
+        entryMode: 'weighted',
+        weightedComponents: [
+          { key: 'std_closures', label: 'Std', multiplier: 1.0 },
+          { key: 'l3_closures',  label: 'L3',  multiplier: 1.5 },
+        ],
+        channelSplit: false,
         configKey: 'caseClosuresDay', configKeyVoice: null, configKeyMessaging: null,
-        tamTargets: true, tamTargetMap: { 'Level 1': 8, 'Level 2': 5 },
+        tamTargets: true, tamTargetMap: { 'Level 1': 6.5, 'Level 2': 4.0 },
         tamTierMap: { 'Level 1': 'level1Target', 'Level 2': 'level2Target' },
         isQuality: false, maxEntry: null,
       },
@@ -96,11 +101,11 @@ export const TEAM_DEFS = {
         tamTargets: false, tamTargetMap: null, isQuality: false, maxEntry: 100,
       },
       {
-        key: 'non_queue_work_day', label: 'Non-Queue Work/Day', overviewLabel: 'NQW', fullName: 'Non-Queue Work Per Day',
-        prefix: '', suffix: '/day', weight: 1.0, rail: { min: -25, max: 25 },
-        entryMode: 'perday', channelSplit: false,
+        key: 'non_queue_work_day', label: 'NQW', overviewLabel: 'NQW', fullName: 'Non-Queue Work',
+        prefix: '', suffix: '', weight: 1.0, rail: { min: -25, max: 25 },
+        entryMode: 'count', channelSplit: false,
         configKey: 'nonQueueWorkDay', configKeyVoice: null, configKeyMessaging: null,
-        tamTargets: true, tamTargetMap: { 'Level 1': 0.25, 'Level 2': 0.6 },
+        tamTargets: true, tamTargetMap: { 'Level 1': 10, 'Level 2': 16 },
         tamTierMap: { 'Level 1': 'level1Target', 'Level 2': 'level2Target' },
         isQuality: false, maxEntry: null,
       },
@@ -108,9 +113,9 @@ export const TEAM_DEFS = {
     hasQaReviews: true, qaMetricKey: null, qaNotInMis: true,
     qaTabLabel: 'QA Reviews', hasDays: true, hasChannel: false,
     defaultConfig: {
-      caseClosuresDay: { level1Target: 8,   level2Target: 5   },
-      resolutionRate:  { target: 60 },
-      nonQueueWorkDay: { level1Target: 0.25, level2Target: 0.6 },
+      caseClosuresDay: { level1Target: 6.5, level2Target: 4.0 },
+      resolutionRate:  { target: 70 },
+      nonQueueWorkDay: { level1Target: 10,  level2Target: 16  },
     },
   },
 }
